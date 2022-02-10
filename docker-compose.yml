@@ -1,0 +1,9 @@
+services:
+  redis:
+    image: redis:alpine
+    ports:
+      - 6379:6379
+
+  demo:
+    build: tekitoi-demo
+    image: tekitoi-demo

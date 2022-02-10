@@ -1,0 +1,13 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Home Page</title>
+  </head>
+  <body>
+    <% if token.is_none() { %>
+      <a href="/api/authorize">Authorize</a>
+    <% } else { %>
+      <a href="/">Logout</a>
+    <% } %>
+  </body>
+</html>
