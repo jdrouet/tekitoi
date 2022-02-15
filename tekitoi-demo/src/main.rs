@@ -5,14 +5,17 @@ mod settings;
 mod status;
 
 use actix_web::{web, App, HttpServer};
+use std::str::FromStr;
 use tracing::Level;
 use tracing_subscriber::FmtSubscriber;
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
-    let subscriber = FmtSubscriber::builder()
-        .with_max_level(Level::TRACE)
-        .finish();
+    let log_level = std::env::var("LOG")
+        .ok()
+        .and_then(|value| Level::from_str(&value).ok())
+        .unwrap_or(Level::DEBUG);
+    let subscriber = FmtSubscriber::builder().with_max_level(log_level).finish();
     tracing::subscriber::set_global_default(subscriber).expect("setting default subscriber failed");
 
     let cfg = settings::Settings::build();

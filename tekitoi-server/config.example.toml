@@ -1,3 +1,9 @@
+base_url = "http://localhost:3000"
+log_level = "info"
+
+[cache]
+url = "redis://localhost"
+
 [clients.client_name]
 client_id = "something"
 client_secrets = ["foo", "bar"]

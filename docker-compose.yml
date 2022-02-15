@@ -8,6 +8,7 @@ services:
     build: tekitoi-demo
     image: tekitoi-demo
     environment:
+      - LOG=debug
       - REDIS_URL=redis://redis
       - CLIENT_ID=tekitoi-client-id
       - CLIENT_SECRET=tekitoi-client-secret
@@ -24,7 +25,7 @@ services:
     environment:
       - CACHE__URL=redis://redis
       - BASE_URL=http://localhost:3000
-      - LOG_LEVEL=trace
+      - LOG_LEVEL=demo
     ports:
       - 3000:3000
     volumes:
