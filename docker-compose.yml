@@ -7,3 +7,25 @@ services:
   demo:
     build: tekitoi-demo
     image: tekitoi-demo
+    environment:
+      - REDIS_URL=redis://redis
+      - CLIENT_ID=tekitoi-client-id
+      - CLIENT_SECRET=tekitoi-client-secret
+      - AUTH_URL=http://localhost:3000/authorize
+      - TOKEN_URL=http://server:3000/api/access-token
+      - BASE_URL=http://localhost:8080
+    ports:
+      - 8080:8080
+
+  server:
+    build: tekitoi-server
+    image: tekitoi-server
+    command: --config /config.toml
+    environment:
+      - CACHE__URL=redis://redis
+      - BASE_URL=http://localhost:3000
+      - LOG_LEVEL=trace
+    ports:
+      - 3000:3000
+    volumes:
+      - ./tekitoi-server/config.toml:/config.toml:ro

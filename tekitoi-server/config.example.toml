@@ -1,0 +1,9 @@
+[clients.client_name]
+client_id = "something"
+client_secrets = ["foo", "bar"]
+redirect_uri = "http://localhost:8080/api/redirect"
+
+[clients.client_name.providers.github]
+client_id = "github-client-id"
+client_secret = "github-client-secret"
+
