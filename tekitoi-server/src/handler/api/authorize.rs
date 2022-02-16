@@ -43,16 +43,26 @@ async fn handle(
         .await?;
     let initial = InitialAuthorizationRequest::from_query_string(&initial_str)?;
     // build oauth client
-    let oauth_client = clients
-        .get_oauth_client(initial.client_id.as_ref(), kind.as_str())
+    let client = clients
+        .get_client(initial.client_id.as_str())
         .ok_or_else(|| ApiError::BadRequest {
-            message: "no client or provider found".into(),
+            message: "no client found".into(),
+        })?;
+    let oauth_client = client
+        .providers
+        .get_provider(kind.as_str())
+        .ok_or_else(|| ApiError::BadRequest {
+            message: "provider found".into(),
         })?;
     // Generate a PKCE challenge.
     let (pkce_challenge, pkce_verifier) = PkceCodeChallenge::new_random_sha256();
     // Generate the full authorization URL.
-    let (auth_url, csrf_token) = oauth_client
-        .authorize_url(CsrfToken::new_random)
+    let (auth_url, csrf_token) = client
+        .providers
+        .with_scopes(
+            kind.as_str(),
+            oauth_client.authorize_url(CsrfToken::new_random),
+        )
         // Set the PKCE code challenge.
         .set_pkce_challenge(pkce_challenge)
         .url();

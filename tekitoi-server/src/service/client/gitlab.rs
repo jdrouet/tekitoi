@@ -2,35 +2,34 @@ use oauth2::basic::BasicClient;
 use oauth2::{AuthUrl, ClientId, ClientSecret, RedirectUrl, TokenUrl};
 use url::Url;
 
-pub const KIND: &str = "github";
+pub const KIND: &str = "gitlab";
 
 #[derive(Debug, serde::Deserialize)]
-pub struct GithubProviderSettings {
+pub struct GitlabProviderSettings {
     client_id: String,
     client_secret: String,
-    #[serde(default)]
     scopes: Vec<String>,
-    #[serde(default = "GithubProviderSettings::default_auth_url")]
+    #[serde(default = "GitlabProviderSettings::default_auth_url")]
     auth_url: Url,
-    #[serde(default = "GithubProviderSettings::default_token_url")]
+    #[serde(default = "GitlabProviderSettings::default_token_url")]
     token_url: Url,
 }
 
-impl GithubProviderSettings {
+impl GitlabProviderSettings {
     pub fn default_auth_url() -> Url {
-        Url::parse("https://github.com/login/oauth/authorize")
-            .expect("unable to build default github auth url")
+        Url::parse("https://gitlab.com/oauth/authorize")
+            .expect("unable to build default gitlab auth url")
     }
 
     pub fn default_token_url() -> Url {
-        Url::parse("https://github.com/login/oauth/access_token")
-            .expect("unable to build default github token url")
+        Url::parse("https://gitlab.com/oauth/token")
+            .expect("unable to build default gitlab token url")
     }
 }
 
-impl GithubProviderSettings {
-    pub fn build(&self, base_url: &str) -> anyhow::Result<GithubProvider> {
-        tracing::trace!("build github provider base_url={:?}", base_url);
+impl GitlabProviderSettings {
+    pub fn build(&self, base_url: &str) -> anyhow::Result<GitlabProvider> {
+        tracing::trace!("build gitlab provider base_url={:?}", base_url);
         let client = BasicClient::new(
             ClientId::new(self.client_id.clone()),
             Some(ClientSecret::new(self.client_secret.clone())),
@@ -41,7 +40,7 @@ impl GithubProviderSettings {
             "{}/api/redirect/{}",
             base_url, KIND
         ))?);
-        Ok(GithubProvider {
+        Ok(GitlabProvider {
             client,
             scopes: self.scopes.clone(),
         })
@@ -49,7 +48,7 @@ impl GithubProviderSettings {
 }
 
 #[derive(Debug)]
-pub struct GithubProvider {
+pub struct GitlabProvider {
     pub client: BasicClient,
     pub scopes: Vec<String>,
 }

@@ -1,4 +1,5 @@
 pub mod github;
+pub mod gitlab;
 
 use std::collections::{HashMap, HashSet};
 use url::Url;
@@ -37,14 +38,8 @@ impl<'a> ClientManager {
         }
     }
 
-    pub fn get_oauth_client(
-        &self,
-        client_id: &str,
-        provider: &str,
-    ) -> Option<&oauth2::basic::BasicClient> {
-        self.0
-            .get(client_id)
-            .and_then(|client| client.providers.get_client(provider))
+    pub fn get_client(&self, client_id: &str) -> Option<&Client> {
+        self.0.get(client_id)
     }
 }
 
@@ -82,6 +77,7 @@ pub struct Client {
 #[derive(Debug, Default, serde::Deserialize)]
 pub struct ProviderManagerSettings {
     github: Option<github::GithubProviderSettings>,
+    gitlab: Option<gitlab::GitlabProviderSettings>,
 }
 
 impl ProviderManagerSettings {
@@ -92,6 +88,11 @@ impl ProviderManagerSettings {
                 .as_ref()
                 .map(|gh| gh.build(base_url))
                 .transpose()?,
+            gitlab: self
+                .gitlab
+                .as_ref()
+                .map(|gl| gl.build(base_url))
+                .transpose()?,
         })
     }
 }
@@ -99,12 +100,36 @@ impl ProviderManagerSettings {
 #[derive(Debug, Default)]
 pub struct ProviderManager {
     github: Option<github::GithubProvider>,
+    gitlab: Option<gitlab::GitlabProvider>,
 }
 
 impl ProviderManager {
-    pub fn get_client(&self, kind: &str) -> Option<&oauth2::basic::BasicClient> {
+    pub fn get_provider(&self, kind: &str) -> Option<&oauth2::basic::BasicClient> {
         match kind {
             github::KIND => self.github.as_ref().map(|gh| &gh.client),
+            gitlab::KIND => self.gitlab.as_ref().map(|gl| &gl.client),
+            _ => None,
+        }
+    }
+
+    pub fn with_scopes<'a>(
+        &self,
+        kind: &str,
+        req: oauth2::AuthorizationRequest<'a>,
+    ) -> oauth2::AuthorizationRequest<'a> {
+        if let Some(scopes) = self.get_scopes(kind) {
+            scopes.iter().fold(req, |r, scope| {
+                r.add_scope(oauth2::Scope::new(scope.clone()))
+            })
+        } else {
+            req
+        }
+    }
+
+    pub fn get_scopes(&self, kind: &str) -> Option<&Vec<String>> {
+        match kind {
+            github::KIND => self.github.as_ref().map(|gh| &gh.scopes),
+            gitlab::KIND => self.gitlab.as_ref().map(|gl| &gl.scopes),
             _ => None,
         }
     }

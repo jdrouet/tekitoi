@@ -41,12 +41,16 @@ async fn handle(
     let code = auth_request.code;
     let client_id = auth_request.inner.initial.client_id.as_str();
     let pkce_verifier = auth_request.inner.pkce_verifier;
-    let oauth_client =
-        clients
-            .get_oauth_client(client_id, kind)
-            .ok_or_else(|| ApiError::InternalServer {
-                message: "Unable to get oauth client".into(),
-            })?;
+    let oauth_client = clients
+        .get_client(client_id)
+        .ok_or_else(|| ApiError::InternalServer {
+            message: "Client not found.".into(),
+        })?
+        .providers
+        .get_provider(kind)
+        .ok_or_else(|| ApiError::InternalServer {
+            message: "Unable to get oauth provider".into(),
+        })?;
     // Now you can trade it for an access token.
     let token_result = oauth_client
         .exchange_code(AuthorizationCode::new(code))
