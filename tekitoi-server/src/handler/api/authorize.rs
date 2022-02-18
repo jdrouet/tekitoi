@@ -1,28 +1,19 @@
 use super::error::ApiError;
+use super::prelude::CachePayload;
 use crate::handler::view::authorize::InitialAuthorizationRequest;
 use crate::service::cache::Pool as CachePool;
 use crate::service::client::ClientManager;
 use actix_web::{get, http::header::LOCATION, web::Data, web::Path, HttpResponse};
 use deadpool_redis::redis;
 use oauth2::{CsrfToken, PkceCodeChallenge, PkceCodeVerifier};
-use serde_qs as qs;
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 pub struct AuthorizationRequest {
-    #[serde(flatten)]
     pub initial: InitialAuthorizationRequest,
     pub pkce_verifier: PkceCodeVerifier,
 }
 
-impl AuthorizationRequest {
-    pub fn to_query_string(&self) -> Result<String, qs::Error> {
-        qs::to_string(self)
-    }
-
-    pub fn from_query_string(value: &str) -> Result<Self, qs::Error> {
-        qs::from_str(value)
-    }
-}
+impl CachePayload for AuthorizationRequest {}
 
 #[get("/api/authorize/{kind}/{state}")]
 async fn handle(
@@ -48,21 +39,18 @@ async fn handle(
         .ok_or_else(|| ApiError::BadRequest {
             message: "no client found".into(),
         })?;
-    let oauth_client = client
+    let provider = client
         .providers
-        .get_provider(kind.as_str())
+        .get(kind.as_str())
         .ok_or_else(|| ApiError::BadRequest {
             message: "provider found".into(),
         })?;
+    let oauth_client = provider.get_oauth_client();
     // Generate a PKCE challenge.
     let (pkce_challenge, pkce_verifier) = PkceCodeChallenge::new_random_sha256();
     // Generate the full authorization URL.
-    let (auth_url, csrf_token) = client
-        .providers
-        .with_scopes(
-            kind.as_str(),
-            oauth_client.authorize_url(CsrfToken::new_random),
-        )
+    let (auth_url, csrf_token) = provider
+        .with_oauth_scopes(oauth_client.authorize_url(CsrfToken::new_random))
         // Set the PKCE code challenge.
         .set_pkce_challenge(pkce_challenge)
         .url();

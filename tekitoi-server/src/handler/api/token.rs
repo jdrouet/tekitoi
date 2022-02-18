@@ -1,4 +1,5 @@
 use super::error::ApiError;
+use super::prelude::CachePayload;
 use crate::handler::api::redirect::RedirectedAuthorizationRequest;
 use crate::service::cache::Pool as CachePool;
 use crate::service::client::ClientManager;
@@ -12,6 +13,15 @@ use oauth2::{
 };
 use url::Url;
 use uuid::Uuid;
+
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
+pub struct ProviderAccessToken {
+    pub inner: StandardTokenResponse<EmptyExtraTokenFields, BasicTokenType>,
+    pub kind: String,
+    pub client_id: String,
+}
+
+impl CachePayload for ProviderAccessToken {}
 
 #[derive(Debug, serde::Deserialize)]
 pub struct TokenRequestPayload {
@@ -37,20 +47,17 @@ async fn handle(
     let auth_request = RedirectedAuthorizationRequest::from_query_string(&auth_request)?;
     tracing::trace!("received authorization request");
     //
-    let kind = auth_request.kind.as_str();
+    let kind = auth_request.kind;
     let code = auth_request.code;
-    let client_id = auth_request.inner.initial.client_id.as_str();
+    let client_id = auth_request.inner.initial.client_id;
     let pkce_verifier = auth_request.inner.pkce_verifier;
     let oauth_client = clients
-        .get_client(client_id)
-        .ok_or_else(|| ApiError::InternalServer {
-            message: "Client not found.".into(),
-        })?
+        .get_client(client_id.as_str())
+        .ok_or_else(|| ApiError::internal_server("Client not found"))?
         .providers
-        .get_provider(kind)
-        .ok_or_else(|| ApiError::InternalServer {
-            message: "Unable to get oauth provider".into(),
-        })?;
+        .get(kind.as_str())
+        .ok_or_else(|| ApiError::internal_server("Unable to find provider"))?
+        .get_oauth_client();
     // Now you can trade it for an access token.
     let token_result = oauth_client
         .exchange_code(AuthorizationCode::new(code))
@@ -59,13 +66,23 @@ async fn handle(
         .request_async(async_http_client)
         .await
         .map_err(|err| {
-            tracing::debug!("unable to fetch token: {:?}", err);
-            ApiError::BadRequest {
-                message: "unable to fetch token from provider".into(),
-            }
+            match err {
+                oauth2::RequestTokenError::Parse(_, ref data) => {
+                    tracing::debug!("unable to parse token: {:?}", std::str::from_utf8(data));
+                }
+                _ => {
+                    tracing::debug!("unable to fetch token: {:?}", err);
+                }
+            };
+            ApiError::internal_server(err)
         })?;
     tracing::trace!("received token");
-    let token_result_str = serde_qs::to_string(&token_result)?;
+    let token_result = ProviderAccessToken {
+        inner: token_result,
+        client_id,
+        kind,
+    };
+    let token_result_str = token_result.to_query_string()?;
     //
     let token_response = StandardTokenResponse::<EmptyExtraTokenFields, BasicTokenType>::new(
         AccessToken::new(Uuid::new_v4().to_string()),

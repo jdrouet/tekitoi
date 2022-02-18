@@ -19,21 +19,24 @@ async fn main() -> std::io::Result<()> {
     tracing::subscriber::set_global_default(subscriber).expect("setting default subscriber failed");
 
     let cfg = settings::Settings::build();
+    let address = cfg.address();
     tracing::trace!("loaded configuration {:?}", cfg);
     let oauth_client = web::Data::new(cfg.oauth_client());
     let redis_client = web::Data::new(cfg.redis_client());
+    let global_config = web::Data::new(cfg);
 
     tracing::debug!("starting server");
     HttpServer::new(move || {
         App::new()
             .app_data(oauth_client.clone())
             .app_data(redis_client.clone())
+            .app_data(global_config.clone())
             .service(authorize::handler)
             .service(status::handler)
             .service(redirect::handler)
             .service(home::handler)
     })
-    .bind(cfg.address())?
+    .bind(address)?
     .workers(1)
     .run()
     .await

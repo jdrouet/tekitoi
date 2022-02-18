@@ -1,4 +1,5 @@
 use super::error::ViewError;
+use crate::handler::api::prelude::CachePayload;
 use crate::service::cache::Pool as CachePool;
 use crate::service::client::ClientManager;
 use actix_web::http::header::ContentType;
@@ -6,7 +7,6 @@ use actix_web::{get, web::Data, web::Query, HttpResponse};
 use deadpool_redis::redis;
 use oauth2::CsrfToken;
 use sailfish::TemplateOnce;
-use serde_qs as qs;
 use url::Url;
 
 // response_type=code
@@ -25,15 +25,7 @@ pub struct InitialAuthorizationRequest {
     pub redirect_uri: Url,
 }
 
-impl InitialAuthorizationRequest {
-    pub fn to_query_string(&self) -> Result<String, qs::Error> {
-        qs::to_string(self)
-    }
-
-    pub fn from_query_string(value: &str) -> Result<Self, qs::Error> {
-        qs::from_str(value)
-    }
-}
+impl CachePayload for InitialAuthorizationRequest {}
 
 #[derive(TemplateOnce)]
 #[template(path = "authorize.html")]

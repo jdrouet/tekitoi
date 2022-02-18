@@ -1471,8 +1471,10 @@ dependencies = [
  "config",
  "oauth2",
  "redis",
+ "reqwest",
  "sailfish",
  "serde",
+ "serde_json",
  "tracing",
  "tracing-subscriber",
 ]

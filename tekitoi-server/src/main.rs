@@ -24,6 +24,7 @@ async fn main() -> std::io::Result<()> {
             .service(handler::api::authorize::handle)
             .service(handler::api::redirect::handle)
             .service(handler::api::token::handle)
+            .service(handler::api::user::handle)
             .service(handler::view::authorize::handle)
     })
     .bind(address)?

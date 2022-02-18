@@ -9,14 +9,17 @@ services:
     image: tekitoi-demo
     environment:
       - LOG=debug
-      - REDIS_URL=redis://redis
+      - REDIS_URL=redis://localhost
       - CLIENT_ID=tekitoi-client-id
       - CLIENT_SECRET=tekitoi-client-secret
       - AUTH_URL=http://localhost:3000/authorize
-      - TOKEN_URL=http://server:3000/api/access-token
+      # - TOKEN_URL=http://server:3000/api/access-token
+      - TOKEN_URL=http://localhost:3000/api/access-token
+      - BASE_API_URL=http://localhost:3000
       - BASE_URL=http://localhost:8080
-    ports:
-      - 8080:8080
+    network_mode: host
+    # ports:
+    #   - 8080:8080
 
   server:
     build: tekitoi-server

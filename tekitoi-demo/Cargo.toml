@@ -10,7 +10,9 @@ actix-web = { version = "4.0.0-rc.3" }
 config = { version = "0.11", default-features = false }
 oauth2 = { version = "4.1" }
 redis = { version = "0.21", default-features = false, features = ["tokio-comp"] }
+reqwest = { version = "0.11", default-features = false, features = ["json", "rustls"] }
 sailfish = { version = "0.3" }
 serde = { version = "1" }
+serde_json = { version = "1" }
 tracing = { version = "0.1" }
 tracing-subscriber = { version = "0.2.0" }
