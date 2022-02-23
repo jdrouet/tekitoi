@@ -31,6 +31,7 @@ impl CachePayload for InitialAuthorizationRequest {}
 #[template(path = "authorize.html")]
 struct AuthorizeTemplate<'a> {
     state: &'a str,
+    providers: Vec<&'static str>,
 }
 
 #[get("/authorize")]
@@ -40,13 +41,16 @@ async fn handle(
     params: Query<InitialAuthorizationRequest>,
 ) -> Result<HttpResponse, ViewError> {
     tracing::trace!("authorization page requested");
-    if let Err(msg) = clients.validate(params.client_id.as_str(), &params.redirect_uri) {
-        tracing::debug!("invalid pair client_id/redirect_uri: {:?}", msg);
-        return Err(ViewError::bad_request(
-            "Invalid authorization request".into(),
-            msg.into(),
-        ));
-    }
+    let client = clients
+        .get_client(params.client_id.as_str())
+        .map_err(|err| {
+            ViewError::bad_request("Invalid authorization request".into(), err.into())
+        })?;
+    client
+        .check_redirect_uri(&params.redirect_uri)
+        .map_err(|err| {
+            ViewError::bad_request("Invalid authorization request".into(), err.into())
+        })?;
     let csrf_token = CsrfToken::new_random();
     let mut cache_conn = cache.get().await?;
     redis::cmd("SETEX")
@@ -57,6 +61,7 @@ async fn handle(
         .await?;
     let ctx = AuthorizeTemplate {
         state: csrf_token.secret(),
+        providers: client.providers.names(),
     };
     let template = ctx.render_once().unwrap();
     Ok(HttpResponse::Ok()

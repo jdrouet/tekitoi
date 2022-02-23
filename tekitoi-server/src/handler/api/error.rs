@@ -9,6 +9,12 @@ pub enum ApiError {
 }
 
 impl ApiError {
+    pub fn bad_request<T: ToString>(value: T) -> Self {
+        Self::BadRequest {
+            message: value.to_string(),
+        }
+    }
+
     pub fn internal_server<T: ToString>(value: T) -> Self {
         Self::InternalServer {
             message: value.to_string(),

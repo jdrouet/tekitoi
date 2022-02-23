@@ -53,7 +53,7 @@ async fn handle(
     let pkce_verifier = auth_request.inner.pkce_verifier;
     let oauth_client = clients
         .get_client(client_id.as_str())
-        .ok_or_else(|| ApiError::internal_server("Client not found"))?
+        .map_err(ApiError::internal_server)?
         .providers
         .get(kind.as_str())
         .ok_or_else(|| ApiError::internal_server("Unable to find provider"))?

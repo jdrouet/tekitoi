@@ -21,25 +21,8 @@ impl ClientManagerSettings {
 pub struct ClientManager(HashMap<String, Client>);
 
 impl<'a> ClientManager {
-    pub fn validate(&self, client_id: &str, redirect_uri: &Url) -> Result<(), &'static str> {
-        if let Some(client) = self.0.get(client_id) {
-            if &client.redirect_uri == redirect_uri {
-                Ok(())
-            } else {
-                tracing::trace!(
-                    "invalid redirect uri, expected {:?}, got {:?}",
-                    client.redirect_uri.to_string(),
-                    redirect_uri.to_string()
-                );
-                Err("Invalid redirect uri.")
-            }
-        } else {
-            Err("Client not found.")
-        }
-    }
-
-    pub fn get_client(&self, client_id: &str) -> Option<&Client> {
-        self.0.get(client_id)
+    pub fn get_client(&self, client_id: &str) -> Result<&Client, &'static str> {
+        self.0.get(client_id).ok_or("Client not found.")
     }
 }
 
@@ -74,6 +57,21 @@ pub struct Client {
     pub providers: ProviderManager,
 }
 
+impl Client {
+    pub fn check_redirect_uri(&self, url: &Url) -> Result<(), &'static str> {
+        if &self.redirect_uri == url {
+            Ok(())
+        } else {
+            tracing::trace!(
+                "invalid redirect uri, expected {:?}, got {:?}",
+                self.redirect_uri.to_string(),
+                url.to_string()
+            );
+            Err("Invalid redirect uri.")
+        }
+    }
+}
+
 #[derive(Debug, Default, serde::Deserialize)]
 pub struct ProviderManagerSettings {
     github: Option<github::GithubProviderSettings>,
@@ -101,6 +99,10 @@ pub struct ProviderManager(HashMap<&'static str, Provider>);
 impl ProviderManager {
     pub fn get(&self, kind: &str) -> Option<&Provider> {
         self.0.get(kind)
+    }
+
+    pub fn names(&self) -> Vec<&'static str> {
+        self.0.keys().map(|item| *item).collect()
     }
 }
 

@@ -50,9 +50,7 @@ async fn handle(
     //
     let user = clients
         .get_client(access_token.client_id.as_str())
-        .ok_or_else(|| ApiError::InternalServer {
-            message: "Client not found.".into(),
-        })?
+        .map_err(ApiError::internal_server)?
         .providers
         .get(access_token.kind.as_str())
         .ok_or_else(|| ApiError::InternalServer {

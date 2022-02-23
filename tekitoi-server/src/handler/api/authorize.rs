@@ -36,15 +36,11 @@ async fn handle(
     // build oauth client
     let client = clients
         .get_client(initial.client_id.as_str())
-        .ok_or_else(|| ApiError::BadRequest {
-            message: "no client found".into(),
-        })?;
+        .map_err(ApiError::bad_request)?;
     let provider = client
         .providers
         .get(kind.as_str())
-        .ok_or_else(|| ApiError::BadRequest {
-            message: "provider found".into(),
-        })?;
+        .ok_or_else(|| ApiError::bad_request("provider not found"))?;
     let oauth_client = provider.get_oauth_client();
     // Generate a PKCE challenge.
     let (pkce_challenge, pkce_verifier) = PkceCodeChallenge::new_random_sha256();
