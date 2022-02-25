@@ -16,6 +16,7 @@ use url::Url;
 // state=
 // redirect_uri=
 
+// TODO add response_type with an enum
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 pub struct InitialAuthorizationRequest {
     pub client_id: String,
@@ -68,3 +69,6 @@ async fn handle(
         .insert_header(ContentType::html())
         .body(template))
 }
+
+#[cfg(test)]
+mod tests {}
