@@ -5,6 +5,17 @@ mod settings;
 
 use actix_web::{web::Data, App, HttpServer};
 
+macro_rules! bind_services {
+    ($app: expr) => {
+        $app.service(crate::handler::api::status::handle)
+            .service(crate::handler::api::authorize::handle)
+            .service(crate::handler::api::redirect::handle)
+            .service(crate::handler::api::token::handle)
+            .service(crate::handler::api::user::handle)
+            .service(crate::handler::view::authorize::handle)
+    };
+}
+
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
     let args = arguments::Arguments::build();
@@ -17,17 +28,55 @@ async fn main() -> std::io::Result<()> {
 
     tracing::debug!("starting server on address {}", address);
     HttpServer::new(move || {
-        App::new()
+        bind_services!(App::new()
             .app_data(cache_pool.clone())
-            .app_data(client_manager.clone())
-            .service(handler::api::status::handle)
-            .service(handler::api::authorize::handle)
-            .service(handler::api::redirect::handle)
-            .service(handler::api::token::handle)
-            .service(handler::api::user::handle)
-            .service(handler::view::authorize::handle)
+            .app_data(client_manager.clone()))
     })
     .bind(address)?
     .run()
     .await
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::service::client::ClientManager;
+    use crate::settings::Settings;
+    use actix_http::Request;
+    use actix_web::dev::ServiceResponse;
+    use actix_web::web::Data;
+    use actix_web::App;
+    use tracing::Level;
+    use tracing_subscriber::FmtSubscriber;
+
+    impl From<Settings> for TestServer {
+        fn from(value: Settings) -> Self {
+            Self {
+                cache_pool: Data::new(value.build_cache_pool()),
+                client_manager: Data::new(value.build_client_manager()),
+            }
+        }
+    }
+
+    pub struct TestServer {
+        pub cache_pool: Data<deadpool_redis::Pool>,
+        pub client_manager: Data<ClientManager>,
+    }
+
+    impl TestServer {
+        pub fn from_simple() -> Self {
+            let subscriber = FmtSubscriber::builder()
+                .with_max_level(Level::TRACE)
+                .finish();
+            let _ = tracing::subscriber::set_global_default(subscriber);
+            Settings::from_path("./tests/simple.toml").into()
+        }
+
+        pub async fn execute(&self, req: Request) -> ServiceResponse {
+            let app = actix_web::test::init_service(bind_services!(App::new()
+                .app_data(self.client_manager.clone())
+                .app_data(self.cache_pool.clone())))
+            .await;
+            actix_web::test::call_service(&app, req).await
+        }
+    }
 }
