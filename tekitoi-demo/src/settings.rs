@@ -19,6 +19,8 @@ pub struct Settings {
     auth_url: String,
     #[serde(default = "Settings::default_token_url")]
     token_url: String,
+    #[serde(default = "Settings::default_api_url")]
+    pub api_url: String,
     base_url: Option<String>,
 }
 
@@ -49,6 +51,10 @@ impl Settings {
 
     fn default_token_url() -> String {
         "http://localhost:3000/api/access-token".into()
+    }
+
+    fn default_api_url() -> String {
+        "http://localhost:3000".into()
     }
 }
 

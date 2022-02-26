@@ -1603,14 +1603,18 @@ dependencies = [
 name = "tekitoi-server"
 version = "0.1.0"
 dependencies = [
+ "actix-http",
  "actix-web",
  "anyhow",
  "clap",
  "config",
  "deadpool-redis",
  "oauth2",
+ "regex",
+ "reqwest",
  "sailfish",
  "serde",
+ "serde_json",
  "serde_qs",
  "tracing",
  "tracing-subscriber",

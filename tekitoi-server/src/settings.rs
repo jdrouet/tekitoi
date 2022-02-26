@@ -28,6 +28,17 @@ impl Settings {
 }
 
 impl Settings {
+    #[cfg(test)]
+    pub fn from_path(path: &str) -> Self {
+        let path = std::path::PathBuf::from(path);
+        let mut cfg = config::Config::new();
+        cfg.merge(config::File::<config::FileSourceFile>::from(path.as_path()))
+            .expect("couldn't merge with configuration file");
+        cfg.merge(config::Environment::new().separator("__"))
+            .expect("couldn't merge with environment");
+        cfg.try_into().expect("couldn't build settings")
+    }
+
     pub fn build(config_path: &Option<PathBuf>) -> Self {
         let mut cfg = config::Config::new();
         if let Some(path) = config_path {

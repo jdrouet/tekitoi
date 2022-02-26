@@ -9,6 +9,18 @@ pub enum ApiError {
 }
 
 impl ApiError {
+    pub fn bad_request<T: ToString>(value: T) -> Self {
+        Self::BadRequest {
+            message: value.to_string(),
+        }
+    }
+
+    pub fn internal_server<T: ToString>(value: T) -> Self {
+        Self::InternalServer {
+            message: value.to_string(),
+        }
+    }
+
     fn status_code(&self) -> StatusCode {
         match self {
             Self::BadRequest { .. } => StatusCode::BAD_REQUEST,
@@ -66,6 +78,15 @@ impl From<deadpool_redis::redis::RedisError> for ApiError {
 impl From<serde_qs::Error> for ApiError {
     fn from(error: serde_qs::Error) -> Self {
         tracing::error!("query string deserialize error: {:?}", error);
+        ApiError::InternalServer {
+            message: "Unable to perform internal action".into(),
+        }
+    }
+}
+
+impl From<serde_json::Error> for ApiError {
+    fn from(error: serde_json::Error) -> Self {
+        tracing::error!("json string deserialize error: {:?}", error);
         ApiError::InternalServer {
             message: "Unable to perform internal action".into(),
         }

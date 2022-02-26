@@ -4,7 +4,8 @@
     <title>Tekitoi - Authorization</title>
   </head>
   <body>
-    <a href="/api/authorize/github/<%= state %>">Authorize with Github</a>
-    <a href="/api/authorize/gitlab/<%= state %>">Authorize with Gitlab</a>
+    <% for provider in providers { %>
+    <a href="/api/authorize/<%= provider %>/<%= state %>">Authorize with <%= provider %></a>
+    <% } %>
   </body>
 </html>

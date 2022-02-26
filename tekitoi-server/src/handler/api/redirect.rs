@@ -1,4 +1,5 @@
 use super::error::ApiError;
+use super::prelude::CachePayload;
 use crate::handler::api::authorize::AuthorizationRequest;
 use crate::service::cache::Pool as CachePool;
 use crate::service::client::ClientManager;
@@ -10,21 +11,12 @@ use serde_qs as qs;
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 pub struct RedirectedAuthorizationRequest {
-    #[serde(flatten)]
     pub inner: AuthorizationRequest,
     pub code: String,
     pub kind: String,
 }
 
-impl RedirectedAuthorizationRequest {
-    pub fn to_query_string(&self) -> Result<String, qs::Error> {
-        qs::to_string(self)
-    }
-
-    pub fn from_query_string(value: &str) -> Result<Self, qs::Error> {
-        qs::from_str(value)
-    }
-}
+impl CachePayload for RedirectedAuthorizationRequest {}
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 pub struct QueryParamsOk {
@@ -58,7 +50,7 @@ impl QueryParams {
 
 fn merge_url<S: serde::Serialize>(url: &url::Url, params: &S) -> Result<String, qs::Error> {
     let queries = qs::to_string(params)?;
-    Ok(format!("{}?{}", url.to_string(), queries))
+    Ok(format!("{}?{}", url, queries))
 }
 
 #[get("/api/redirect/{kind}")]

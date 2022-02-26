@@ -5,9 +5,9 @@ RUN apk add --no-cache musl-dev
 ENV USER=root
 
 WORKDIR /code
-RUN cargo init --bin
+RUN cargo init --bin && mkdir -p /code/.cargo
 COPY Cargo.toml Cargo.lock /code/
-RUN cargo fetch
+RUN cargo vendor > /code/.cargo/config.toml
 
 COPY src /code/src
 COPY templates /code/templates

@@ -68,3 +68,13 @@ impl From<serde_qs::Error> for ViewError {
         }
     }
 }
+
+impl From<serde_json::Error> for ViewError {
+    fn from(error: serde_json::Error) -> Self {
+        ViewError {
+            code: StatusCode::INTERNAL_SERVER_ERROR,
+            message: "Unable to perform internal action.".into(),
+            description: error.to_string(),
+        }
+    }
+}
