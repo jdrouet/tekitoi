@@ -45,6 +45,7 @@ mod tests {
     use actix_web::dev::ServiceResponse;
     use actix_web::web::Data;
     use actix_web::App;
+    use std::str::FromStr;
     use tracing::Level;
     use tracing_subscriber::FmtSubscriber;
 
@@ -63,11 +64,17 @@ mod tests {
     }
 
     impl TestServer {
-        pub fn from_simple() -> Self {
-            let subscriber = FmtSubscriber::builder()
-                .with_max_level(Level::TRACE)
-                .finish();
+        fn init_logger() {
+            let level = std::env::var("RUST_LOG")
+                .ok()
+                .and_then(|value| Level::from_str(value.as_str()).ok())
+                .unwrap_or(Level::DEBUG);
+            let subscriber = FmtSubscriber::builder().with_max_level(level).finish();
             let _ = tracing::subscriber::set_global_default(subscriber);
+        }
+
+        pub fn from_simple() -> Self {
+            Self::init_logger();
             Settings::from_path("./tests/simple.toml").into()
         }
 
