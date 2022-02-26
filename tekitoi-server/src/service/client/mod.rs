@@ -102,7 +102,7 @@ impl ProviderManager {
     }
 
     pub fn names(&self) -> Vec<&'static str> {
-        self.0.keys().map(|item| *item).collect()
+        self.0.keys().copied().collect()
     }
 }
 

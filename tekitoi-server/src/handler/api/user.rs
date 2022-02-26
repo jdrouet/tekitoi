@@ -8,7 +8,7 @@ use actix_web::{get, HttpRequest, HttpResponse};
 use deadpool_redis::redis;
 use oauth2::TokenResponse;
 
-fn get_access_token<'a>(req: &'a HttpRequest) -> Result<&'a str, ApiError> {
+fn get_access_token(req: &HttpRequest) -> Result<&str, ApiError> {
     req.headers()
         .get("authorization")
         .ok_or_else(|| ApiError::BadRequest {

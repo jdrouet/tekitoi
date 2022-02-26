@@ -50,7 +50,7 @@ impl QueryParams {
 
 fn merge_url<S: serde::Serialize>(url: &url::Url, params: &S) -> Result<String, qs::Error> {
     let queries = qs::to_string(params)?;
-    Ok(format!("{}?{}", url.to_string(), queries))
+    Ok(format!("{}?{}", url, queries))
 }
 
 #[get("/api/redirect/{kind}")]

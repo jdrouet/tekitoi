@@ -110,7 +110,7 @@ mod tests {
         let payload = std::str::from_utf8(&body).unwrap();
         assert!(payload.contains("github"));
         let re = regex::Regex::new("\"/api/authorize/github/(.*)\"").unwrap();
-        assert!(re.find(&payload).is_some());
+        assert!(re.find(payload).is_some());
     }
 
     #[actix_web::test]
