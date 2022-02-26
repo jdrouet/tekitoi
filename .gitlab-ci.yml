@@ -1,0 +1,26 @@
+stages:
+  - test
+
+lint:
+  stage: test
+  image: rust:latest
+  before_script:
+    - rustup component add clippy
+    - rustup component add rustfmt
+  script:
+    - cd tekitoi-demo
+    - cargo fmt --check
+    - cargo clippy --tests -- -D warnings
+    - cd ../tekitoi-server
+    - cargo fmt --check
+    - cargo clippy --tests -- -D warnings
+
+integration:
+  stage: test
+  image: rust:latest
+  services:
+    - redis:alpine
+  variables:
+    CACHE__URL: redis://redis
+  script:
+    - cd tekitoi-server && cargo test
