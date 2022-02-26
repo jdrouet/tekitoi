@@ -31,23 +31,26 @@ impl Settings {
     #[cfg(test)]
     pub fn from_path(path: &str) -> Self {
         let path = std::path::PathBuf::from(path);
-        let mut cfg = config::Config::new();
-        cfg.merge(config::File::<config::FileSourceFile>::from(path.as_path()))
-            .expect("couldn't merge with configuration file");
-        cfg.merge(config::Environment::new().separator("__"))
-            .expect("couldn't merge with environment");
-        cfg.try_into().expect("couldn't build settings")
+        config::Config::builder()
+            .add_source(config::File::from(path))
+            .add_source(config::Environment::default().separator("__"))
+            .build()
+            .expect("couldn't build settings")
+            .try_deserialize()
+            .expect("couldn't deserialize settings")
     }
 
     pub fn build(config_path: &Option<PathBuf>) -> Self {
-        let mut cfg = config::Config::new();
-        if let Some(path) = config_path {
-            cfg.merge(config::File::<config::FileSourceFile>::from(path.as_path()))
-                .expect("couldn't merge with configuration file");
-        }
-        cfg.merge(config::Environment::new().separator("__"))
-            .expect("couldn't merge with environment");
-        cfg.try_into().expect("couldn't build settings")
+        let cfg = config::Config::builder();
+        let cfg = match config_path {
+            Some(path) => cfg.add_source(config::File::from(path.clone())),
+            None => cfg,
+        };
+        cfg.add_source(config::Environment::default().separator("__"))
+            .build()
+            .expect("couldn't build settings")
+            .try_deserialize()
+            .expect("couldn't deserialize settings")
     }
 
     pub fn address(&self) -> String {
