@@ -1,9 +1,12 @@
 stages:
   - test
 
-lint:
+lint-demo:
   stage: test
   image: rust:latest
+  only:
+    changes:
+      - tekitoi-demo/**/*
   before_script:
     - rustup component add clippy
     - rustup component add rustfmt
@@ -11,16 +14,31 @@ lint:
     - cd tekitoi-demo
     - cargo fmt --check
     - cargo clippy --tests -- -D warnings
-    - cd ../tekitoi-server
+
+lint-server:
+  stage: test
+  image: rust:latest
+  only:
+    changes:
+      - tekitoi-server/**/*
+  before_script:
+    - rustup component add clippy
+    - rustup component add rustfmt
+  script:
+    - cd tekitoi-server
     - cargo fmt --check
     - cargo clippy --tests -- -D warnings
 
 integration:
   stage: test
   image: rust:latest
+  only:
+    changes:
+      - tekitoi-server/**/*
   services:
     - redis:alpine
   variables:
     CACHE__URL: redis://redis
   script:
-    - cd tekitoi-server && cargo test
+    - cd tekitoi-server
+    - cargo test
