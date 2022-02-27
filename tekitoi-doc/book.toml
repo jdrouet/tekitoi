@@ -1,0 +1,6 @@
+[book]
+authors = ["Jérémie Drouet"]
+language = "en"
+multilingual = false
+src = "src"
+title = "Tekitoi"
