@@ -1,5 +1,6 @@
 pub mod github;
 pub mod gitlab;
+pub mod google;
 
 use std::collections::{HashMap, HashSet};
 use url::Url;
@@ -76,6 +77,7 @@ impl Client {
 pub struct ProviderManagerSettings {
     github: Option<github::GithubProviderSettings>,
     gitlab: Option<gitlab::GitlabProviderSettings>,
+    google: Option<google::GoogleProviderSettings>,
 }
 
 impl ProviderManagerSettings {
@@ -88,6 +90,10 @@ impl ProviderManagerSettings {
         if let Some(item) = self.gitlab.as_ref() {
             let provider = item.build(base_url)?;
             res.insert(gitlab::KIND, provider.into());
+        }
+        if let Some(item) = self.google.as_ref() {
+            let provider = item.build(base_url)?;
+            res.insert(google::KIND, provider.into());
         }
         Ok(ProviderManager(res))
     }
@@ -110,6 +116,7 @@ impl ProviderManager {
 pub enum Provider {
     Github(github::GithubProvider),
     Gitlab(gitlab::GitlabProvider),
+    Google(google::GoogleProvider),
 }
 
 impl From<github::GithubProvider> for Provider {
@@ -124,11 +131,18 @@ impl From<gitlab::GitlabProvider> for Provider {
     }
 }
 
+impl From<google::GoogleProvider> for Provider {
+    fn from(value: google::GoogleProvider) -> Self {
+        Self::Google(value)
+    }
+}
+
 impl Provider {
     pub fn get_oauth_client(&self) -> &oauth2::basic::BasicClient {
         match self {
             Self::Github(item) => item.get_oauth_client(),
             Self::Gitlab(item) => item.get_oauth_client(),
+            Self::Google(item) => item.get_oauth_client(),
         }
     }
 
@@ -145,6 +159,7 @@ impl Provider {
         match self {
             Self::Github(item) => item.get_oauth_scopes(),
             Self::Gitlab(item) => item.get_oauth_scopes(),
+            Self::Google(item) => item.get_oauth_scopes(),
         }
     }
 
@@ -152,6 +167,7 @@ impl Provider {
         match self {
             Self::Github(item) => item.get_api_client(access_token).into(),
             Self::Gitlab(item) => item.get_api_client(access_token).into(),
+            Self::Google(item) => item.get_api_client(access_token).into(),
         }
     }
 }
@@ -160,6 +176,7 @@ impl Provider {
 pub enum ProviderClient<'a> {
     Github(github::GithubProviderClient<'a>),
     Gitlab(gitlab::GitlabProviderClient<'a>),
+    Google(google::GoogleProviderClient<'a>),
 }
 
 impl<'a> From<github::GithubProviderClient<'a>> for ProviderClient<'a> {
@@ -174,11 +191,18 @@ impl<'a> From<gitlab::GitlabProviderClient<'a>> for ProviderClient<'a> {
     }
 }
 
+impl<'a> From<google::GoogleProviderClient<'a>> for ProviderClient<'a> {
+    fn from(value: google::GoogleProviderClient<'a>) -> Self {
+        Self::Google(value)
+    }
+}
+
 impl<'a> ProviderClient<'a> {
     pub async fn fetch_user(&self) -> Result<ProviderUser, String> {
         match self {
             Self::Github(client) => client.fetch_user().await.map(Into::into),
             Self::Gitlab(client) => client.fetch_user().await.map(Into::into),
+            Self::Google(client) => client.fetch_user().await.map(Into::into),
         }
     }
 }
@@ -188,6 +212,7 @@ impl<'a> ProviderClient<'a> {
 pub enum ProviderUser {
     Github(github::GithubUser),
     Gitlab(gitlab::GitlabUser),
+    Google(google::GoogleUser),
 }
 
 impl From<github::GithubUser> for ProviderUser {
@@ -199,5 +224,11 @@ impl From<github::GithubUser> for ProviderUser {
 impl From<gitlab::GitlabUser> for ProviderUser {
     fn from(value: gitlab::GitlabUser) -> Self {
         Self::Gitlab(value)
+    }
+}
+
+impl From<google::GoogleUser> for ProviderUser {
+    fn from(value: google::GoogleUser) -> Self {
+        Self::Google(value)
     }
 }
