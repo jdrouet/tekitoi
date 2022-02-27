@@ -13,6 +13,12 @@
 
 ### 🏠 [Homepage](https://gitlab.com/jeremie.drouet/tekitoi)
 
+## ✨ Features
+
+* Github and Gitlab oauth2 proxy
+* Multi arch (AMD64, i386, ARM64)
+* Lightweight (Only needs 2Mo of RAM against 512Mo minimum for Keycloak)
+
 ## 🐟 Example
 
 Command to start tekitoi
