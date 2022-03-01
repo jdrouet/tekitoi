@@ -1,0 +1,24 @@
+name: deploy doc on github pages
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-20.04
+    concurrency:
+      group: ${{ github.workflow }}-${{ github.ref }}
+    steps:
+      - name: pull the code
+        uses: actions/checkout@v2
+      - name: setup mdbook
+        uses: peaceiris/actions-mdbook@v1
+      - name: build mdbook
+        run: cd tekitoi-doc && mdbook build
+      - name: deploy to good branch
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./tekitoi-doc/book
