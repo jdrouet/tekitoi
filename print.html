@@ -1,0 +1,262 @@
+<!DOCTYPE HTML>
+<html lang="en" class="sidebar-visible no-js light">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>Tekitoi</title>
+        <meta name="robots" content="noindex" />
+        <!-- Custom HTML head -->
+        <meta content="text/html; charset=utf-8" http-equiv="Content-Type">
+        <meta name="description" content="">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff" />
+
+        <link rel="icon" href="favicon.svg">
+        <link rel="shortcut icon" href="favicon.png">
+        <link rel="stylesheet" href="css/variables.css">
+        <link rel="stylesheet" href="css/general.css">
+        <link rel="stylesheet" href="css/chrome.css">
+        <link rel="stylesheet" href="css/print.css" media="print">
+        <!-- Fonts -->
+        <link rel="stylesheet" href="FontAwesome/css/font-awesome.css">
+        <link rel="stylesheet" href="fonts/fonts.css">
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" href="highlight.css">
+        <link rel="stylesheet" href="tomorrow-night.css">
+        <link rel="stylesheet" href="ayu-highlight.css">
+
+        <!-- Custom theme stylesheets -->
+    </head>
+    <body>
+        <!-- Provide site root to javascript -->
+        <script type="text/javascript">
+            var path_to_root = "";
+            var default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "navy" : "light";
+        </script>
+
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script type="text/javascript">
+            try {
+                var theme = localStorage.getItem('mdbook-theme');
+                var sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script type="text/javascript">
+            var theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            var html = document.querySelector('html');
+            html.classList.remove('no-js')
+            html.classList.remove('light')
+            html.classList.add(theme);
+            html.classList.add('js');
+        </script>
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script type="text/javascript">
+            var html = document.querySelector('html');
+            var sidebar = 'hidden';
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            }
+            html.classList.remove('sidebar-visible');
+            html.classList.add("sidebar-" + sidebar);
+        </script>
+
+        <nav id="sidebar" class="sidebar" aria-label="Table of contents">
+            <div class="sidebar-scrollbox">
+                <ol class="chapter"><li class="chapter-item expanded affix "><a href="introduction.html">Introduction</a></li><li class="spacer"></li><li class="chapter-item expanded "><a href="installation.html"><strong aria-hidden="true">1.</strong> Installation</a></li><li class="chapter-item expanded "><a href="configuration.html"><strong aria-hidden="true">2.</strong> Configuration</a></li><li class="chapter-item expanded "><a href="examples.html"><strong aria-hidden="true">3.</strong> Examples</a></li><li class="spacer"></li><li class="chapter-item expanded affix "><a href="contributors.html">Contributors</a></li></ol>
+            </div>
+            <div id="sidebar-resize-handle" class="sidebar-resize-handle"></div>
+        </nav>
+
+        <div id="page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                <div id="menu-bar-hover-placeholder"></div>
+                <div id="menu-bar" class="menu-bar sticky bordered">
+                    <div class="left-buttons">
+                        <button id="sidebar-toggle" class="icon-button" type="button" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="sidebar">
+                            <i class="fa fa-bars"></i>
+                        </button>
+                        <button id="theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="theme-list">
+                            <i class="fa fa-paint-brush"></i>
+                        </button>
+                        <ul id="theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="light">Light (default)</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="ayu">Ayu</button></li>
+                        </ul>
+                        <button id="search-toggle" class="icon-button" type="button" title="Search. (Shortkey: s)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="S" aria-controls="searchbar">
+                            <i class="fa fa-search"></i>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">Tekitoi</h1>
+
+                    <div class="right-buttons">
+                        <a href="print.html" title="Print this book" aria-label="Print this book">
+                            <i id="print-button" class="fa fa-print"></i>
+                        </a>
+                    </div>
+                </div>
+
+                <div id="search-wrapper" class="hidden">
+                    <form id="searchbar-outer" class="searchbar-outer">
+                        <input type="search" id="searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="searchresults-outer" aria-describedby="searchresults-header">
+                    </form>
+                    <div id="searchresults-outer" class="searchresults-outer hidden">
+                        <div id="searchresults-header" class="searchresults-header"></div>
+                        <ul id="searchresults">
+                        </ul>
+                    </div>
+                </div>
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script type="text/javascript">
+                    document.getElementById('sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="content" class="content">
+                    <main>
+                        <h1 id="introduction"><a class="header" href="#introduction">Introduction</a></h1>
+<p>Tekitoi is a lightweight service that aggregates (or will) most of the oauth2 providers on the market into a single service.
+The goal is to write the oauth2 service for all the providers once, in an efficient way, and make it available to everybody.</p>
+<p>The &quot;efficient&quot; part is really important (to me) considering the current environment state. The goal is to make a service with
+a minimal memory, CPU and energy footprint.</p>
+<p>Although Tekitoi is not made to be a complete alternative to <a href="https://www.keycloak.org/">Keycloack</a> (for now), the goal is
+to have similar features, with a minimal footprint (<a href="https://www.keycloak.org/docs/latest/server_installation/index.html#installation-prerequisites">512Mo of RAM required for Keycloack</a>
+when Tekitoi consumes 2Mo of RAM).</p>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="installation"><a class="header" href="#installation">Installation</a></h1>
+<h2 id="using-docker"><a class="header" href="#using-docker">Using Docker</a></h2>
+<p>Tekitoi is mainly distributed on <a href="https://hub.docker.com/r/jdrouet/tekitoi">Docker Hub</a> and you can start it with the following command.</p>
+<pre><code class="language-bash">docker run -d \
+  -e CACHE__URL=redis://redis-hostname \
+  -p 3000:3000 \
+  -v /path/to/config.toml:/config.toml:ro \
+  jdrouet/tekitoi:latest --config /config.toml
+</code></pre>
+<p>You can also use it inside a <a href="https://docs.docker.com/compose/">docker-compose</a> file</p>
+<pre><code class="language-yaml">services:
+  cache:
+    image: redis:alpine
+  
+  tekitoi:
+    image: jdrouet/tekitoi:latest
+    command: --config /config.toml
+    environment:
+      CACHE__URL: redis://cache
+    port:
+      - 3000:3000
+    volumes:
+      - /path/to/config.toml:/config.toml:ro
+</code></pre>
+<h2 id="from-source"><a class="header" href="#from-source">From source</a></h2>
+<p>To compile Tekitoi from the sources, you will just need the rust suite, cargo and git</p>
+<pre><code class="language-bash">git clone https://github.com/jdrouet/tekitoi
+cd tekitoi/tekitoi-server
+cargo build --release
+./target/release/tekitoi-server --config /path/to/config.toml
+</code></pre>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="configuration"><a class="header" href="#configuration">Configuration</a></h1>
+<p>Tekitoi can be both configured though environment variables and a configuration file.</p>
+<p>Here is a fully filled configuration file.</p>
+<pre><code class="language-toml"># Base url to reach Tekitoi. It's used internally to build
+# the redirect url sent to any provider
+# It can also be specified using the BASE_URL environment variable.
+base_url = &quot;http://localhost:3000&quot;
+# The level of logging that will be user. Can be info, debug, warn, error or trace.
+# It can also be specified using the LOG_LEVEL environment variable.
+log_level = &quot;info&quot;
+
+[cache]
+# The url to reach the redis cache.
+# It can also be specified using the CACHE__URL environment variable.
+url = &quot;redis://localhost&quot;
+
+# This is a dictionnary of all the configured clients that tekitoi can serve.
+# You can add as many as you need.
+[clients.client_name]
+# The client ID that the oauth client will need to use
+client_id = &quot;something&quot;
+# A set of client secrets that the oauth client will need to use
+client_secrets = [&quot;foo&quot;, &quot;bar&quot;]
+# The redirect uri that the oauth client will need to use
+redirect_uri = &quot;http://localhost:8080/api/redirect&quot;
+
+# This is a set of providers that you can configure
+[clients.client_name.providers.github]
+client_id = &quot;github-client-id&quot;
+client_secret = &quot;github-client-secret&quot;
+# scopes = []
+# auth_url = &quot;&quot;
+# token_url = &quot;&quot;
+# base_api_url = &quot;&quot;
+
+[clients.client_name.providers.gitlab]
+client_id = &quot;github-client-id&quot;
+client_secret = &quot;github-client-secret&quot;
+scopes = [&quot;read_user&quot;]
+# auth_url = &quot;&quot;
+# token_url = &quot;&quot;
+# base_api_url = &quot;&quot;
+
+[clients.client_name.providers.google]
+client_id = &quot;google-client-id&quot;
+client_secret = &quot;google-client-secret&quot;
+scopes = [&quot;openid&quot;, &quot;email&quot;, &quot;profile&quot;]
+# auth_url = &quot;&quot;
+# token_url = &quot;&quot;
+# base_api_url = &quot;&quot;
+</code></pre>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="examples"><a class="header" href="#examples">Examples</a></h1>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="contributors"><a class="header" href="#contributors">Contributors</a></h1>
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+            </nav>
+
+        </div>
+
+        <script type="text/javascript">
+            window.playground_copyable = true;
+        </script>
+        <script src="elasticlunr.min.js" type="text/javascript" charset="utf-8"></script>
+        <script src="mark.min.js" type="text/javascript" charset="utf-8"></script>
+        <script src="searcher.js" type="text/javascript" charset="utf-8"></script>
+        <script src="clipboard.min.js" type="text/javascript" charset="utf-8"></script>
+        <script src="highlight.js" type="text/javascript" charset="utf-8"></script>
+        <script src="book.js" type="text/javascript" charset="utf-8"></script>
+
+        <!-- Custom JS scripts -->
+        <script type="text/javascript">
+        window.addEventListener('load', function() {
+            window.setTimeout(window.print, 100);
+        });
+        </script>
+    </body>
+</html>
