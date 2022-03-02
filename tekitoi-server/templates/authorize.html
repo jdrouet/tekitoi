@@ -2,10 +2,66 @@
 <html>
   <head>
     <title>Tekitoi - Authorization</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <style>
+    :root {
+      --primary: #2196F3;
+      --primary-dark: #3F51B5;
+      --bg-color: #ECEFF1;
+      --paper-color: white;
+    }
+    * { margin: 0; padding: 0; }
+    html, body { height: 100%; }
+    body {
+      background-color: var(--bg-color);
+      display: flex;
+      flex-direction: column;
+      font-family: "Roboto", "Helvetica", "Arial", sans-serif;
+      align-items: center;
+      justify-content: center;
+    }
+    section {
+      background-color: var(--paper-color);
+      border-radius: 4px;
+      padding: 24px;
+      padding-bottom: 20px;
+      max-width: 350px;
+      width: 100%;
+    }
+    section h1 {
+      margin-bottom: 16px;
+      text-align: center;
+    }
+    section a {
+      display: block;
+      margin-bottom: 8px;
+      padding: 8px 16px;
+      text-align: center;
+      text-decoration: none;
+      text-transform: uppercase;
+      border: solid 1px var(--primary);
+      border-radius: 4px;
+      color: var(--primary);
+      font-weight: 500;
+      line-height: 24px;
+    }
+    section a:hover {
+      border-color: var(--primary-dark);
+      color: var(--primary-dark);
+    }
+    </style>
   </head>
   <body>
-    <% for provider in providers { %>
-    <a href="/api/authorize/<%= provider %>/<%= state %>">Authorize with <%= provider %></a>
-    <% } %>
+    <section>
+      <h1>
+        Authentication
+      </h1>
+      <% for provider in providers { %>
+      <a href="/api/authorize/<%= provider %>/<%= state %>">
+        Connect with <%= provider %>
+      </a>
+      <% } %>
+    </section>
   </body>
 </html>
