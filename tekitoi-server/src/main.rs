@@ -6,13 +6,14 @@ mod settings;
 use actix_web::{web::Data, App, HttpServer};
 
 macro_rules! bind_services {
-    ($app: expr) => {
+    ($app: expr, $static: expr) => {
         $app.service(crate::handler::api::status::handle)
             .service(crate::handler::api::authorize::handle)
             .service(crate::handler::api::redirect::handle)
             .service(crate::handler::api::token::handle)
             .service(crate::handler::api::user::handle)
             .service(crate::handler::view::authorize::handle)
+            .service(actix_files::Files::new("/", $static))
     };
 }
 
@@ -25,12 +26,16 @@ async fn main() -> std::io::Result<()> {
     let address = cfg.address();
     let cache_pool = Data::new(cfg.build_cache_pool());
     let client_manager = Data::new(cfg.build_client_manager());
+    let static_path = cfg.static_path().clone();
 
     tracing::debug!("starting server on address {}", address);
     HttpServer::new(move || {
-        bind_services!(App::new()
-            .app_data(cache_pool.clone())
-            .app_data(client_manager.clone()))
+        bind_services!(
+            App::new()
+                .app_data(cache_pool.clone())
+                .app_data(client_manager.clone()),
+            static_path.clone()
+        )
     })
     .bind(address)?
     .run()
@@ -79,9 +84,12 @@ mod tests {
         }
 
         pub async fn execute(&self, req: Request) -> ServiceResponse {
-            let app = actix_web::test::init_service(bind_services!(App::new()
-                .app_data(self.client_manager.clone())
-                .app_data(self.cache_pool.clone())))
+            let app = actix_web::test::init_service(bind_services!(
+                App::new()
+                    .app_data(self.client_manager.clone())
+                    .app_data(self.cache_pool.clone()),
+                "./static"
+            ))
             .await;
             actix_web::test::call_service(&app, req).await
         }

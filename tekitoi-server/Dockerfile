@@ -17,7 +17,9 @@ FROM alpine:3.14
 
 ENV HOST=0.0.0.0
 ENV PORT=3000
+ENV STATIC_PATH=/static
 
+COPY static /static
 COPY --from=builder /code/target/release/tekitoi-server /usr/bin/tekitoi
 
 ENTRYPOINT ["/usr/bin/tekitoi"]

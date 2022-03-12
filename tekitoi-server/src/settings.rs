@@ -10,6 +10,8 @@ pub struct Settings {
     host: String,
     #[serde(default = "Settings::default_port")]
     port: u16,
+    #[serde(default = "Settings::default_static_path")]
+    static_path: PathBuf,
     base_url: Option<String>,
     cache: deadpool_redis::Config,
     log_level: Option<String>,
@@ -24,6 +26,10 @@ impl Settings {
 
     fn default_port() -> u16 {
         3000
+    }
+
+    fn default_static_path() -> PathBuf {
+        PathBuf::from("./static")
     }
 }
 
@@ -74,6 +80,10 @@ impl Settings {
         self.clients
             .build(self.base_url().as_str())
             .expect("couldn't build client manager")
+    }
+
+    pub fn static_path(&self) -> &PathBuf {
+        &self.static_path
     }
 
     pub fn set_logger(&self) {
