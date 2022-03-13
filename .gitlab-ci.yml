@@ -49,7 +49,6 @@ image-demo:
   image: jdrouet/docker-with-buildx:latest
   only:
     - main
-    - ci-config
   services:
     - docker:dind
   before_script:
@@ -63,7 +62,6 @@ image-server:
   image: jdrouet/docker-with-buildx:latest
   only:
     - main
-    - ci-config
   services:
     - docker:dind
   before_script:
