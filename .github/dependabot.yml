@@ -1,0 +1,17 @@
+version: 2
+updates:
+  - package-ecosystem: "cargo"
+    directory: "/tekitoi-demo"
+    schedule:
+      interval: "daily"
+    labels:
+      - "demo"
+      - "dependencies"
+  
+  - package-ecosystem: "cargo"
+    directory: "/tekitoi-server"
+    schedule:
+      interval: "daily"
+    labels:
+      - "server"
+      - "dependencies"
