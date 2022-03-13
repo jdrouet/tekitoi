@@ -1,5 +1,6 @@
 stages:
   - test
+  - build
 
 lint-demo:
   stage: test
@@ -42,3 +43,29 @@ integration:
   script:
     - cd tekitoi-server
     - cargo test
+
+image-demo:
+  stage: build
+  image: jdrouet/docker-with-buildx:latest
+  only:
+    - main
+  services:
+    - docker:dind
+  before_script:
+    - docker login --username $DOCKER_USERNAME --password $DOCKER_PASSWORD
+    - docker buildx create --use --platform linux/amd64,linux/arm64
+  script:
+    - docker buildx build --platform linux/amd64,linux/arm64 -t jdrouet/tekitoi-demo:canary tekitoi-demo
+
+image-server:
+  stage: build
+  image: jdrouet/docker-with-buildx:latest
+  only:
+    - main
+  services:
+    - docker:dind
+  before_script:
+    - docker login --username $DOCKER_USERNAME --password $DOCKER_PASSWORD
+    - docker buildx create --use --platform linux/amd64,linux/arm64
+  script:
+    - docker buildx build --platform linux/amd64,linux/arm64 -t jdrouet/tekitoi:canary tekitoi-demo
