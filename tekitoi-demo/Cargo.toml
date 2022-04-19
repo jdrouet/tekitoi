@@ -15,4 +15,4 @@ sailfish = { version = "0.3" }
 serde = { version = "1" }
 serde_json = { version = "1" }
 tracing = { version = "0.1" }
-tracing-subscriber = { version = "0.2.0" }
+tracing-subscriber = { version = "0.3.11" }
