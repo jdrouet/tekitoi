@@ -16,7 +16,7 @@ oauth2 = { version = "4.2" }
 reqwest = { version = "0.11", default-features = false, features = ["json", "rustls"] }
 sailfish = { version = "0.4" }
 serde = { version = "1.0" }
-serde_qs = { version = "0.9" }
+serde_qs = { version = "0.10" }
 serde_json = { version = "1.0" }
 tracing = { version = "0.1" }
 tracing-subscriber = { version = "0.3" }
