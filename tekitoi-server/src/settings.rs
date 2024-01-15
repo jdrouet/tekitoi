@@ -1,5 +1,6 @@
-use crate::service::cache::CachePool;
-use crate::service::client::{ClientManager, ClientManagerSettings};
+use crate::service::client::ApplicationCollectionConfig;
+use crate::service::database::DatabaseConfig;
+use crate::service::BaseUrl;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::path::PathBuf;
 use std::str::FromStr;
@@ -16,10 +17,10 @@ pub struct Settings {
     static_path: PathBuf,
     base_url: Option<String>,
     #[serde(default)]
-    cache: crate::service::cache::CacheConfig,
-    log_level: Option<String>,
+    database: DatabaseConfig,
     #[serde(default)]
-    pub clients: ClientManagerSettings,
+    pub applications: ApplicationCollectionConfig,
+    log_level: Option<String>,
 }
 
 impl Default for Settings {
@@ -29,9 +30,9 @@ impl Default for Settings {
             port: Self::default_port(),
             static_path: Self::default_static_path(),
             base_url: None,
-            cache: Default::default(),
+            database: Default::default(),
+            applications: Default::default(),
             log_level: Some("INFO".into()),
-            clients: ClientManagerSettings::default(),
         }
     }
 }
@@ -52,12 +53,12 @@ impl Settings {
 
 impl Settings {
     pub fn build(config_path: Option<PathBuf>) -> Self {
-        let cfg = config::Config::builder();
+        let cfg = ::config::Config::builder();
         let cfg = match config_path {
             Some(path) => cfg.add_source(config::File::from(path)),
             None => cfg,
         };
-        cfg.add_source(config::Environment::default().separator("__"))
+        cfg.add_source(::config::Environment::default().separator("__"))
             .build()
             .expect("couldn't build settings")
             .try_deserialize()
@@ -68,20 +69,19 @@ impl Settings {
         SocketAddr::from((self.host, self.port))
     }
 
-    pub fn build_cache_pool(&self) -> CachePool {
-        self.cache.build()
+    pub async fn build_database_pool(&self) -> crate::service::database::DatabasePool {
+        self.database
+            .build()
+            .await
+            .expect("couldn't build database pool")
     }
 
-    fn base_url(&self) -> String {
-        self.base_url
-            .clone()
-            .unwrap_or_else(|| format!("http://{}:{}", self.host, self.port))
-    }
-
-    pub fn build_client_manager(&self) -> ClientManager {
-        self.clients
-            .build(self.base_url().as_str())
-            .expect("couldn't build client manager")
+    pub fn base_url(&self) -> BaseUrl {
+        BaseUrl::from(
+            self.base_url
+                .clone()
+                .unwrap_or_else(|| format!("http://{}:{}", self.host, self.port)),
+        )
     }
 
     pub fn static_path(&self) -> &PathBuf {

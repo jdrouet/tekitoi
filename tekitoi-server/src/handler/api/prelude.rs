@@ -1,8 +1,11 @@
+use std::str::FromStr;
+
 use axum::http::{header::AUTHORIZATION, request::Parts};
+use uuid::Uuid;
 
 use super::error::ApiError;
 
-pub struct AccessToken(pub String);
+pub struct AccessToken(pub Uuid);
 
 #[axum::async_trait]
 impl<S> axum::extract::FromRequestParts<S> for AccessToken
@@ -24,6 +27,9 @@ where
                 v.strip_prefix("Bearer ")
                     .ok_or_else(|| ApiError::unauthorized("Invalid authorization header format."))
             })
-            .map(|v| Self(v.to_string()))
+            .and_then(|v| {
+                Uuid::from_str(v).map_err(|_| ApiError::unauthorized("Invalid token content."))
+            })
+            .map(Self)
     }
 }

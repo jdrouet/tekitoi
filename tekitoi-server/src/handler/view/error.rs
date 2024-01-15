@@ -4,8 +4,6 @@ use axum::{
 };
 use sailfish::TemplateOnce;
 
-use crate::service::cache::CacheError;
-
 #[derive(Clone, Debug, TemplateOnce)]
 #[template(path = "error.html")]
 pub struct ViewError {
@@ -41,15 +39,6 @@ impl IntoResponse for ViewError {
     }
 }
 
-impl From<CacheError> for ViewError {
-    fn from(value: CacheError) -> Self {
-        match value {
-            CacheError::RedisClient(inner) => Self::from(inner),
-            CacheError::RedisPool(inner) => Self::from(inner),
-        }
-    }
-}
-
 impl From<deadpool_redis::PoolError> for ViewError {
     fn from(error: deadpool_redis::PoolError) -> Self {
         ViewError {
@@ -82,6 +71,16 @@ impl From<serde_qs::Error> for ViewError {
 
 impl From<serde_json::Error> for ViewError {
     fn from(error: serde_json::Error) -> Self {
+        ViewError {
+            code: StatusCode::INTERNAL_SERVER_ERROR,
+            message: "Unable to perform internal action.".into(),
+            description: error.to_string(),
+        }
+    }
+}
+
+impl From<sqlx::Error> for ViewError {
+    fn from(error: sqlx::Error) -> Self {
         ViewError {
             code: StatusCode::INTERNAL_SERVER_ERROR,
             message: "Unable to perform internal action.".into(),

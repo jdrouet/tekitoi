@@ -4,8 +4,6 @@ use axum::{
     Json,
 };
 
-use crate::service::cache::CacheError;
-
 #[derive(Debug)]
 pub struct ApiError {
     code: StatusCode,
@@ -61,15 +59,6 @@ impl IntoResponse for ApiError {
     }
 }
 
-impl From<CacheError> for ApiError {
-    fn from(value: CacheError) -> Self {
-        match value {
-            CacheError::RedisClient(inner) => Self::from(inner),
-            CacheError::RedisPool(inner) => Self::from(inner),
-        }
-    }
-}
-
 impl From<deadpool_redis::PoolError> for ApiError {
     fn from(error: deadpool_redis::PoolError) -> Self {
         tracing::error!("redis pool error: {:?}", error);
@@ -94,6 +83,13 @@ impl From<serde_qs::Error> for ApiError {
 impl From<serde_json::Error> for ApiError {
     fn from(error: serde_json::Error) -> Self {
         tracing::error!("json string deserialize error: {:?}", error);
+        Self::internal_server("Unable to perform internal action")
+    }
+}
+
+impl From<sqlx::Error> for ApiError {
+    fn from(error: sqlx::Error) -> Self {
+        tracing::error!("database error: {:?}", error);
         Self::internal_server("Unable to perform internal action")
     }
 }

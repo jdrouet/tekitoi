@@ -26,7 +26,7 @@ pub async fn handler(
     );
     cache.set(csrf_token, pkce_verifier).await;
 
-    tracing::trace!("redirecting to {:?}", auth_url);
+    tracing::debug!("redirecting to {:?}", auth_url);
 
     Redirect::temporary(auth_url.as_str())
 }

@@ -1,10 +1,11 @@
 use super::error::ViewError;
-use crate::entity::incoming::IncomingAuthorizationRequest;
-use crate::service::cache::CachePool;
-use crate::service::client::ClientManager;
+use crate::model::provider::{ListProviderByApplicationId, Provider};
+use crate::model::{application::FindApplicationByClientId, incoming::CreateIncomingRequest};
+use crate::service::database::DatabasePool;
 use axum::{extract::Query, response::Html, Extension};
-use oauth2::CsrfToken;
 use sailfish::TemplateOnce;
+use url::Url;
+use uuid::Uuid;
 
 // response_type=code
 // client_id=
@@ -14,46 +15,66 @@ use sailfish::TemplateOnce;
 // redirect_uri=
 
 // TODO add response_type with an enum
-// #[derive(Debug, serde::Serialize, serde::Deserialize)]
-// pub struct InitialAuthorizationRequest {
-//     pub client_id: String,
-//     pub code_challenge: String,
-//     pub code_challenge_method: String,
-//     pub state: String,
-//     pub redirect_uri: Url,
-// }
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+pub struct QueryParams {
+    pub client_id: String,
+    pub code_challenge: String,
+    pub code_challenge_method: String,
+    pub state: String,
+    pub redirect_uri: Url,
+}
 
 #[derive(TemplateOnce)]
 #[template(path = "authorize.html")]
-struct AuthorizeTemplate<'a> {
-    state: &'a str,
-    providers: Vec<&'static str>,
+struct AuthorizeTemplate {
+    request_id: Uuid,
+    providers: Vec<Provider>,
 }
 
 pub async fn handler(
-    Extension(clients): Extension<ClientManager>,
-    Extension(cache): Extension<CachePool>,
-    Query(params): Query<IncomingAuthorizationRequest>,
+    Extension(db_pool): Extension<DatabasePool>,
+    Query(params): Query<QueryParams>,
 ) -> Result<Html<String>, ViewError> {
-    tracing::trace!("authorization page requested");
-    let client = clients.get(params.client_id.as_str()).map_err(|err| {
-        ViewError::bad_request("Invalid authorization request".into(), err.into())
-    })?;
-    client
+    let mut tx = db_pool.begin().await?;
+
+    let application = FindApplicationByClientId::new(&params.client_id)
+        .execute(&mut tx)
+        .await?;
+    let Some(application) = application else {
+        return Err(ViewError::bad_request(
+            "Application not found".into(),
+            "There is no application defined with the provided client id.".into(),
+        ));
+    };
+
+    application
         .check_redirect_uri(&params.redirect_uri)
         .map_err(|err| {
             ViewError::bad_request("Invalid authorization request".into(), err.into())
         })?;
-    let csrf_token = CsrfToken::new_random();
-    let mut cache_conn = cache.acquire().await?;
-    cache_conn
-        .insert_incoming_authorization_request(csrf_token.secret(), params)
+
+    let request_id = CreateIncomingRequest::new(
+        application.id,
+        params.code_challenge.as_str(),
+        params.code_challenge_method.as_str(),
+        params.state.as_str(),
+        &params.redirect_uri,
+    )
+    .execute(&mut tx)
+    .await?;
+
+    let providers = ListProviderByApplicationId::new(application.id)
+        .execute(&mut tx)
         .await?;
+
+    tx.commit().await?;
+
     let ctx = AuthorizeTemplate {
-        state: csrf_token.secret(),
-        providers: client.providers.names(),
+        request_id,
+        providers,
     };
     let template = ctx.render_once().unwrap();
+
     Ok(Html(template))
 }
 
@@ -99,7 +120,7 @@ mod tests {
     async fn simple() {
         let auth_uri = create_auth_uri("main-client-id");
 
-        let app = Server::new(settings()).router();
+        let app = Server::new(settings()).await.router();
 
         let res = app
             .oneshot(
@@ -126,7 +147,7 @@ mod tests {
     async fn client_not_found() {
         let auth_uri = create_auth_uri("unknown-client-id");
 
-        let app = Server::new(settings()).router();
+        let app = Server::new(settings()).await.router();
 
         let res = app
             .oneshot(

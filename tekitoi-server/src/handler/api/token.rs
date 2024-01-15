@@ -1,15 +1,19 @@
 use super::error::ApiError;
-use crate::entity::token::ProviderAccessToken;
-use crate::service::cache::CachePool;
-use crate::service::client::ClientManager;
+use crate::model::local::GetLocalRequestById;
+use crate::model::provider::GetProviderById;
+use crate::model::redirected::FindRedirectedRequestByCode;
+use crate::model::token::CreateAccessToken;
+use crate::service::database::DatabasePool;
+use crate::service::BaseUrl;
 use axum::{Extension, Form, Json};
+use chrono::Duration;
 use oauth2::basic::BasicTokenType;
 use oauth2::reqwest::async_http_client;
 use oauth2::{
-    AccessToken, AuthorizationCode, EmptyExtraTokenFields, StandardTokenResponse, TokenResponse,
+    AccessToken, AuthorizationCode, EmptyExtraTokenFields, PkceCodeVerifier, StandardTokenResponse,
+    TokenResponse,
 };
 use url::Url;
-use uuid::Uuid;
 
 #[derive(Debug, serde::Deserialize)]
 pub struct TokenRequestPayload {
@@ -17,41 +21,41 @@ pub struct TokenRequestPayload {
     pub code_verifier: String,
     pub redirect_uri: Url,
     pub code: String,
+    #[serde(flatten)]
+    pub others: serde_json::Value,
 }
 
 pub async fn handler(
-    Extension(clients): Extension<ClientManager>,
-    Extension(cache): Extension<CachePool>,
+    Extension(base_url): Extension<BaseUrl>,
+    Extension(pool): Extension<DatabasePool>,
     Form(payload): Form<TokenRequestPayload>,
 ) -> Result<Json<StandardTokenResponse<EmptyExtraTokenFields, BasicTokenType>>, ApiError> {
-    tracing::trace!("access-token requested with code={:?}", payload.code);
-    let mut cache_conn = cache.acquire().await?;
-    let auth_request = cache_conn
-        .remove_redirected_authorization_request(payload.code.as_str())
+    let mut tx = pool.begin().await?;
+
+    let redirected_request = FindRedirectedRequestByCode::new(&payload.code)
+        .execute(&mut tx)
         .await?;
-    let Some(auth_request) = auth_request else {
+
+    let Some(redirected_request) = redirected_request else {
+        tracing::debug!("couldn't find redirected request by code={}", payload.code);
         return Err(ApiError::bad_request(
             "unable to find authorization request",
         ));
     };
-    tracing::trace!("received authorization request");
+    let local_request = GetLocalRequestById::new(redirected_request.local_request_id)
+        .execute(&mut tx)
+        .await?;
+
+    let provider = GetProviderById::new(local_request.provider_id)
+        .execute(&mut tx)
+        .await?;
     //
-    let kind = auth_request.kind;
-    let code = auth_request.code;
-    let client_id = auth_request.inner.initial.client_id;
-    let pkce_verifier = auth_request.inner.pkce_verifier;
-    let oauth_client = clients
-        .get(client_id.as_str())
-        .map_err(ApiError::internal_server)?
-        .providers
-        .get(kind.as_str())
-        .ok_or_else(|| ApiError::internal_server("Unable to find provider"))?
-        .get_oauth_client();
+    let oauth_client = provider.oauth_client(base_url.as_ref());
     // Now you can trade it for an access token.
     let token_result = oauth_client
-        .exchange_code(AuthorizationCode::new(code))
+        .exchange_code(AuthorizationCode::new(redirected_request.code))
         // Set the PKCE code verifier.
-        .set_pkce_verifier(pkce_verifier)
+        .set_pkce_verifier(PkceCodeVerifier::new(local_request.pkce_verifier))
         .request_async(async_http_client)
         .await
         .map_err(|err| {
@@ -65,21 +69,27 @@ pub async fn handler(
             };
             ApiError::internal_server(err)
         })?;
-    tracing::trace!("received token");
-    let token_result = ProviderAccessToken {
-        inner: token_result,
-        client_id,
-        kind,
-    };
-    //
+
+    let duration = token_result
+        .expires_in()
+        .map(|dur| Duration::seconds(dur.as_secs() as i64));
+
+    let token_id = CreateAccessToken::new(
+        redirected_request.id,
+        token_result.access_token().secret(),
+        duration,
+    )
+    .execute(&mut tx)
+    .await?;
+
+    // TODO find a better access token than a UUID
     let token_response = StandardTokenResponse::<EmptyExtraTokenFields, BasicTokenType>::new(
-        AccessToken::new(Uuid::new_v4().to_string()),
+        AccessToken::new(token_id.to_string()),
         BasicTokenType::Bearer,
         EmptyExtraTokenFields {},
     );
-    cache_conn
-        .insert_provider_access_token(token_response.access_token().secret(), token_result)
-        .await?;
+
+    tx.commit().await?;
     //
     Ok(Json(token_response))
 }

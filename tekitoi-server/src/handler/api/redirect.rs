@@ -1,7 +1,9 @@
 use super::error::ApiError;
-use crate::entity::redirected::RedirectedAuthorizationRequest;
-use crate::service::cache::CachePool;
-use axum::extract::{Path, Query};
+use crate::model::incoming::GetIncomingRequestById;
+use crate::model::local::FindLocalRequestByState;
+use crate::model::redirected::CreateRedirectedRequest;
+use crate::service::database::DatabasePool;
+use axum::extract::Query;
 use axum::response::Redirect;
 use axum::Extension;
 use serde_qs as qs;
@@ -42,20 +44,22 @@ fn merge_url<S: serde::Serialize>(url: &url::Url, params: &S) -> Result<String, 
 }
 
 pub async fn handler(
-    Extension(cache): Extension<CachePool>,
-    Path(kind): Path<String>,
+    Extension(pool): Extension<DatabasePool>,
     Query(query): Query<QueryParams>,
 ) -> Result<Redirect, ApiError> {
-    tracing::trace!("redirection requested");
-    let mut cache_conn = cache.acquire().await?;
-    let auth_request = cache_conn
-        .remove_local_authorization_request(query.state())
+    let mut tx = pool.begin().await?;
+
+    let local = FindLocalRequestByState::new(query.state())
+        .execute(&mut tx)
         .await?;
-    let Some(auth_request) = auth_request else {
-        return Err(ApiError::bad_request(
-            "unable to find authorization request",
-        ));
+    let Some(local) = local else {
+        return Err(ApiError::bad_request("unable to find request"));
     };
+
+    let initial = GetIncomingRequestById::new(local.initial_request_id)
+        .execute(&mut tx)
+        .await?;
+
     let query = match query {
         QueryParams::Ok(value) => value,
         QueryParams::Error(value) => {
@@ -63,29 +67,26 @@ pub async fn handler(
                 "something went wrong with provider {:?}",
                 value.error_description
             );
-            let url = merge_url(&auth_request.initial.redirect_uri, &value)?;
+            let url = merge_url(&initial.redirect_uri, &value)?;
             return Ok(Redirect::temporary(&url));
         }
     };
-    let code_challenge = auth_request.initial.code_challenge.clone();
-    let state = auth_request.initial.state.clone();
-    let redirect_uri = auth_request.initial.redirect_uri.clone();
+    let code_challenge = initial.code_challenge.clone();
+    let state = initial.state.clone();
+    let redirect_uri = initial.redirect_uri.clone();
+
     let response_query = QueryParamsOk {
         state,
         code: code_challenge.as_str().to_string(),
-        // code: auth_request.pkce_verifier.secret().to_string(),
     };
     let url = merge_url(&redirect_uri, &response_query)?;
+
     // TODO find what to store before having token request
-    let redirect_request = RedirectedAuthorizationRequest {
-        inner: auth_request,
-        code: query.code,
-        kind,
-    };
-    cache_conn
-        .insert_redirected_authorization_request(code_challenge.as_str(), redirect_request)
+    CreateRedirectedRequest::new(local.id, &query.code)
+        .execute(&mut tx)
         .await?;
-    tracing::debug!("redirecting to {:?}", url);
+
+    tx.commit().await?;
     //
     Ok(Redirect::temporary(&url))
 }
