@@ -47,6 +47,7 @@ pub struct Provider {
     pub authorization_url: Url,
     pub token_url: Url,
     pub base_api_url: Url,
+    pub scopes: Vec<String>,
 }
 
 impl Provider {
@@ -100,6 +101,7 @@ impl FromRow<'_, SqliteRow> for Provider {
         let authorization_url: String = row.try_get(7)?;
         let token_url: String = row.try_get(8)?;
         let base_api_url: String = row.try_get(9)?;
+        let scopes: serde_json::Value = row.try_get(10)?;
 
         Ok(Self {
             id: row.try_get(0)?,
@@ -112,6 +114,7 @@ impl FromRow<'_, SqliteRow> for Provider {
             authorization_url: Url::parse(&authorization_url).expect("invalid authorization url"),
             token_url: Url::parse(&token_url).expect("invalid token url"),
             base_api_url: Url::parse(&base_api_url).expect("invalid base api url"),
+            scopes: serde_json::from_value(scopes).expect("couldn't dejsonify [String]"),
         })
     }
 }
@@ -143,39 +146,6 @@ where application_id = $1"#,
         &self,
         executor: &mut DatabaseTransaction<'_>,
     ) -> Result<Vec<Provider>, sqlx::Error> {
-        match executor {
-            DatabaseTransaction::Sqlite(inner) => self.execute_sqlite(inner).await,
-        }
-    }
-}
-
-pub struct ListProviderScopesById {
-    provider_id: Uuid,
-}
-
-impl ListProviderScopesById {
-    pub fn new(provider_id: Uuid) -> Self {
-        Self { provider_id }
-    }
-
-    async fn execute_sqlite(
-        &self,
-        tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
-    ) -> Result<Vec<String>, sqlx::Error> {
-        sqlx::query_scalar(
-            r#"select content
-from provider_scopes
-where provider_id = $1"#,
-        )
-        .bind(self.provider_id)
-        .fetch_all(&mut **tx)
-        .await
-    }
-
-    pub async fn execute(
-        &self,
-        executor: &mut DatabaseTransaction<'_>,
-    ) -> Result<Vec<String>, sqlx::Error> {
         match executor {
             DatabaseTransaction::Sqlite(inner) => self.execute_sqlite(inner).await,
         }
@@ -347,8 +317,10 @@ impl<'a> UpsertProvider<'a> {
         let id = Uuid::new_v4();
         let now = Utc::now().timestamp();
 
-        let provider_id = sqlx::query_scalar(r#"insert into providers (id, application_id, kind, name, label, client_id, client_secret, authorization_url, token_url, base_api_url, created_at, updated_at)
-values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $11)
+        let scopes = serde_json::to_value(self.scopes).expect("couldn't jsonify [String]");
+
+        let provider_id = sqlx::query_scalar(r#"insert into providers (id, application_id, kind, name, label, client_id, client_secret, authorization_url, token_url, base_api_url, scopes, created_at, updated_at)
+values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $12)
 on conflict (application_id, name) do update set
     kind = $3,
     label = $5,
@@ -357,7 +329,8 @@ on conflict (application_id, name) do update set
     authorization_url = $8,
     token_url = $9,
     base_api_url = $10,
-    updated_at = $11,
+    scopes = $11,
+    updated_at = $12,
     deleted_at = null
 returning id"#)
             .bind(id)
@@ -370,23 +343,12 @@ returning id"#)
             .bind(self.authorization_url.as_str())
             .bind(self.token_url.as_str())
             .bind(self.base_api_url.as_str())
+            .bind(scopes)
             .bind(now)
             .fetch_one(&mut **tx)
             .await?;
 
-        let scopes = serde_json::to_value(self.scopes).expect("couldn't jsonify [String]");
-        sqlx::query(
-            "delete from provider_scopes where provider_id = $1 and content not in (select json_array($2))",
-        )
-        .bind(provider_id)
-        .bind(&scopes)
-        .execute(&mut **tx)
-        .await?;
-        sqlx::query("insert into provider_scopes (provider_id, content) select $1, json_array($2) on conflict do nothing")
-            .bind(provider_id)
-            .bind(&scopes)
-            .execute(&mut **tx)
-            .await?;
+        tracing::debug!("done");
 
         Ok(provider_id)
     }

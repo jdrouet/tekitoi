@@ -1,6 +1,6 @@
 use super::error::ApiError;
+use crate::model::local::CreateLocalRequest;
 use crate::model::provider::FindProviderForInitialRequest;
-use crate::model::{local::CreateLocalRequest, provider::ListProviderScopesById};
 use crate::service::database::DatabasePool;
 use crate::service::BaseUrl;
 use axum::{extract::Path, response::Redirect, Extension};
@@ -21,9 +21,6 @@ pub async fn handler(
     let Some(provider) = provider else {
         return Err(ApiError::bad_request("provider not found"));
     };
-    let scopes = ListProviderScopesById::new(provider.id)
-        .execute(&mut tx)
-        .await?;
 
     // Generate a PKCE challenge.
     let (pkce_challenge, pkce_verifier) = PkceCodeChallenge::new_random_sha256();
@@ -31,7 +28,7 @@ pub async fn handler(
     let client = provider.oauth_client(base_url.as_ref());
     let auth_request = client
         .authorize_url(CsrfToken::new_random)
-        .add_scopes(scopes.iter().cloned().map(Scope::new));
+        .add_scopes(provider.scopes.iter().cloned().map(Scope::new));
     let (auth_url, csrf_token) = auth_request.set_pkce_challenge(pkce_challenge).url();
 
     CreateLocalRequest::new(

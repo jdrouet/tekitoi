@@ -8,6 +8,7 @@ use crate::service::database::DatabaseTransaction;
 pub struct Application {
     pub id: Uuid,
     pub client_id: String,
+    pub client_secrets: Vec<String>,
     pub name: String,
     pub label: Option<String>,
     pub redirect_uri: Url,
@@ -34,12 +35,16 @@ impl Application {
 
 impl FromRow<'_, SqliteRow> for Application {
     fn from_row(row: &'_ SqliteRow) -> Result<Self, sqlx::Error> {
-        let redirect_url: String = row.try_get(4)?;
+        let client_secrets: serde_json::Value = row.try_get(2)?;
+        let redirect_url: String = row.try_get(5)?;
+
         Ok(Self {
             id: row.try_get(0)?,
             client_id: row.try_get(1)?,
-            name: row.try_get(2)?,
-            label: row.try_get(3)?,
+            client_secrets: serde_json::from_value(client_secrets)
+                .expect("couldn't parse [String]"),
+            name: row.try_get(3)?,
+            label: row.try_get(4)?,
             redirect_uri: Url::parse(&redirect_url).expect("couldn't parse url"),
         })
     }
@@ -61,7 +66,7 @@ impl<'a> FindApplicationByClientId<'a> {
         tx: &mut Transaction<'c, Sqlite>,
     ) -> Result<Option<Application>, sqlx::Error> {
         sqlx::query_as(
-            r#"select id, client_id, name, label, redirect_uri
+            r#"select id, client_id, client_secrets, name, label, redirect_uri
 from applications
 where client_id = $1"#,
         )
@@ -112,14 +117,18 @@ impl<'a> UpsertApplication<'a> {
         let id = Uuid::new_v4();
         let now = Utc::now().timestamp();
 
-        let application_id: Uuid = sqlx::query_scalar(
-            r#"insert into applications (id, name, label, client_id, redirect_uri, created_at, updated_at)
-values ($1, $2, $3, $4, $5, $6, $6)
+        let secrets =
+            serde_json::to_value(self.client_secrets).expect("unable to jsonify [String]");
+
+        sqlx::query_scalar(
+            r#"insert into applications (id, name, label, client_id, client_secrets, redirect_uri, created_at, updated_at)
+values ($1, $2, $3, $4, $5, $6, $7, $7)
 on conflict (name) do update set
     label = $3,
     client_id = $4,
-    redirect_uri = $5,
-    updated_at = $6,
+    client_secrets = $5,
+    redirect_uri = $6,
+    updated_at = $7,
     deleted_at = null
 returning id"#,
         )
@@ -127,34 +136,11 @@ returning id"#,
         .bind(self.name)
         .bind(self.label)
         .bind(self.client_id)
+        .bind(secrets)
         .bind(self.redirect_uri.to_string().as_str())
         .bind(now)
         .fetch_one(&mut **tx)
-        .await?;
-
-        let secrets = serde_json::to_value(self.client_secrets).expect("couldn't jsonify [String]");
-        sqlx::query(
-            r#"update application_client_secrets
-set deleted_at = $1
-where application_id = $2 and content not in (select json_array($3))"#,
-        )
-        .bind(now)
-        .bind(application_id)
-        .bind(&secrets)
-        .execute(&mut **tx)
-        .await?;
-        sqlx::query(
-            r#"insert into application_client_secrets (application_id, content, created_at)
-select $1, json_array($2), $3
-on conflict do nothing"#,
-        )
-        .bind(application_id)
-        .bind(&secrets)
-        .bind(now)
-        .execute(&mut **tx)
-        .await?;
-
-        Ok(application_id)
+        .await
     }
 
     pub async fn execute<'c>(
@@ -186,7 +172,7 @@ impl<'a> DeleteOtherApplications<'a> {
         sqlx::query(
             r#"update applications
 set deleted_at = $1
-where name not in (select json_array($2))"#,
+where name not in (select $2)"#,
         )
         .bind(now)
         .bind(&names)
