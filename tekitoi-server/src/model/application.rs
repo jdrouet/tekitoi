@@ -42,7 +42,7 @@ impl FromRow<'_, SqliteRow> for Application {
             id: row.try_get(0)?,
             client_id: row.try_get(1)?,
             client_secrets: serde_json::from_value(client_secrets)
-                .expect("couldn't parse [String]"),
+                .expect("couldn't dejsonify [String]"),
             name: row.try_get(3)?,
             label: row.try_get(4)?,
             redirect_uri: Url::parse(&redirect_url).expect("couldn't parse url"),

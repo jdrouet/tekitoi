@@ -133,7 +133,7 @@ impl ListProviderByApplicationId {
         tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
     ) -> Result<Vec<Provider>, sqlx::Error> {
         sqlx::query_as(
-            r#"select id, application_id, kind, name, label, client_id, client_secret, authorization_url, token_url, base_api_url
+            r#"select id, application_id, kind, name, label, client_id, client_secret, authorization_url, token_url, base_api_url, scopes
 from providers
 where application_id = $1"#,
         )
@@ -170,7 +170,7 @@ impl FindProviderForInitialRequest {
         tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
     ) -> Result<Option<Provider>, sqlx::Error> {
         sqlx::query_as(
-            r#"select providers.id, providers.application_id, providers.kind, providers.name, providers.label, providers.client_id, providers.client_secret, providers.authorization_url, providers.token_url, providers.base_api_url
+            r#"select providers.id, providers.application_id, providers.kind, providers.name, providers.label, providers.client_id, providers.client_secret, providers.authorization_url, providers.token_url, providers.base_api_url, providers.scopes
 from providers
 join initial_requests on initial_requests.application_id = providers.application_id
 where initial_requests.id = $1
@@ -207,7 +207,7 @@ impl GetProviderById {
         tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
     ) -> Result<Provider, sqlx::Error> {
         sqlx::query_as(
-            r#"select id, application_id, kind, name, label, client_id, client_secret, authorization_url, token_url, base_api_url
+            r#"select id, application_id, kind, name, label, client_id, client_secret, authorization_url, token_url, base_api_url, scopes
 from providers
 where providers.id = $1
 limit 1"#,
@@ -241,7 +241,7 @@ impl GetProviderByAccessToken {
         tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
     ) -> Result<Provider, sqlx::Error> {
         sqlx::query_as(
-            r#"select providers.id, providers.application_id, providers.kind, providers.name, providers.label, providers.client_id, providers.client_secret, providers.authorization_url, providers.token_url, providers.base_api_url
+            r#"select providers.id, providers.application_id, providers.kind, providers.name, providers.label, providers.client_id, providers.client_secret, providers.authorization_url, providers.token_url, providers.base_api_url, providers.scopes
 from providers
 join local_requests on local_requests.provider_id = providers.id
 join redirect_requests on redirect_requests.local_request_id = local_requests.id
@@ -386,7 +386,7 @@ impl<'a> DeleteOtherProviders<'a> {
         sqlx::query(
             r#"update providers
 set deleted_at = $1
-where application_id = $2 and name not in (select json_array($3))"#,
+where application_id = $2 and name not in (select value from json_each($3))"#,
         )
         .bind(now)
         .bind(self.application_id)
