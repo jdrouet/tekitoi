@@ -1,0 +1,52 @@
+name: server main
+
+on:
+  workflow_call:
+  pull_request:
+    paths:
+      - "tekitoi-server/**"
+  push:
+    branches:
+      - main
+    paths:
+      - "tekitoi-server/**"
+
+defaults:
+  run:
+    working-directory: tekitoi-server
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+
+    concurrency:
+      group: ${{ github.ref }}-${{ matrix.toolchain }}-server-main
+      cancel-in-progress: true
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: install cargo toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          components: rustfmt,clippy
+
+      - name: prepare cache
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-server-main-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: run lint
+        run: cargo fmt --all --check
+
+      - name: run check
+        run: cargo check --all-features --tests
+
+      - name: run clippy
+        run: cargo clippy --all-targets --all-features --tests --workspace
