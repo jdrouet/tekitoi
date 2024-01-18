@@ -16,3 +16,9 @@ tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 tower-http = { version = "0.5", features = ["trace"] }
 tracing = { version = "0.1" }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[dev-dependencies]
+http-body-util = "0.1"
+serial_test = "3.0"
+similar-asserts = "1.5"
+tower = "0.4"

@@ -16,6 +16,16 @@ pub struct Config {
     base_url: Option<String>,
 }
 
+impl Default for Config {
+    fn default() -> Self {
+        Self {
+            port: Self::default_port(),
+            host: Self::default_host(),
+            base_url: None,
+        }
+    }
+}
+
 impl Config {
     fn default_host() -> IpAddr {
         IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1))
@@ -63,7 +73,7 @@ pub struct Server {
 }
 
 impl Server {
-    pub fn build(self) -> axum::Router {
+    pub fn into_router(self) -> axum::Router {
         use axum::extract::State;
         use axum::routing::get;
 
@@ -78,7 +88,7 @@ impl Server {
         let listener = tokio::net::TcpListener::bind(self.socket_address)
             .await
             .unwrap();
-        let app = self.build();
+        let app = self.into_router();
         axum::serve(listener, app).await.unwrap();
     }
 }
