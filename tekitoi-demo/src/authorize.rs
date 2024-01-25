@@ -3,12 +3,11 @@ use axum::response::Redirect;
 use axum::Extension;
 use oauth2::basic::BasicClient;
 use oauth2::{CsrfToken, PkceCodeChallenge};
-use redis::AsyncCommands;
 
 // #[get("/api/authorize")]
 pub async fn handler(
     Extension(oauth_client): Extension<BasicClient>,
-    State(redis_client): State<redis::Client>,
+    State(cache): State<crate::settings::LocalCache>,
 ) -> Redirect {
     tracing::trace!("authorize requested");
     // Generate a PKCE challenge.
@@ -25,14 +24,7 @@ pub async fn handler(
         csrf_token.secret(),
         pkce_verifier.secret()
     );
-    let mut redis_con = redis_client
-        .get_async_connection()
-        .await
-        .expect("couldn't get redis connection");
-    let _: String = redis_con
-        .set_ex(csrf_token.secret(), pkce_verifier.secret(), 60 * 10)
-        .await
-        .expect("couldn't persist in cache");
+    cache.set(csrf_token, pkce_verifier).await;
 
     tracing::trace!("redirecting to {:?}", auth_url);
 

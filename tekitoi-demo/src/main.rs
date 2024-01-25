@@ -27,7 +27,7 @@ async fn main() -> std::io::Result<()> {
     let tcp_listener = TcpListener::bind(address).await.unwrap();
 
     tracing::debug!("starting server");
-    let redis_client = cfg.redis_client();
+    let cache = cfg.cache();
 
     let app = axum::Router::new()
         .route("/", get(home::handler))
@@ -36,7 +36,7 @@ async fn main() -> std::io::Result<()> {
         .route("/api/authorize", get(authorize::handler))
         .layer(Extension(cfg.oauth_client()))
         .layer(Extension(Arc::new(cfg)))
-        .with_state(redis_client);
+        .with_state(cache);
 
     axum::serve(tcp_listener, app).await?;
     Ok(())

@@ -9,7 +9,6 @@ services:
     image: tekitoi-demo
     environment:
       - LOG=debug
-      - REDIS_URL=redis://localhost
       - CLIENT_ID=tekitoi-client-id
       - CLIENT_SECRET=tekitoi-client-secret
       - AUTH_URL=http://localhost:3000/authorize
