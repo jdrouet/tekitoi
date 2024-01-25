@@ -1,9 +1,8 @@
 use super::error::ViewError;
 use crate::handler::api::prelude::CachePayload;
-use crate::service::cache::Pool as CachePool;
+use crate::service::cache::CachePool;
 use crate::service::client::ClientManager;
 use axum::{extract::Query, response::Html, Extension};
-use deadpool_redis::redis;
 use oauth2::CsrfToken;
 use sailfish::TemplateOnce;
 use url::Url;
@@ -50,12 +49,10 @@ pub async fn handler(
             ViewError::bad_request("Invalid authorization request".into(), err.into())
         })?;
     let csrf_token = CsrfToken::new_random();
-    let mut cache_conn = cache.get().await?;
-    redis::cmd("SETEX")
-        .arg(csrf_token.secret())
-        .arg(60i32 * 10)
-        .arg(params.to_query_string()?)
-        .query_async(&mut cache_conn)
+    let mut cache_conn = cache.acquire().await?;
+    let value = params.to_query_string()?;
+    cache_conn
+        .set_exp(csrf_token.secret(), value.as_str(), 60i64 * 10)
         .await?;
     let ctx = AuthorizeTemplate {
         state: csrf_token.secret(),

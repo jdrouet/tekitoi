@@ -1,7 +1,7 @@
 use std::net::SocketAddr;
 
 use axum::Extension;
-use service::client::ClientManager;
+use service::{cache::CachePool, client::ClientManager};
 use tokio::net::TcpListener;
 
 mod handler;
@@ -10,7 +10,7 @@ pub mod settings;
 
 pub struct Server {
     address: SocketAddr,
-    cache_pool: deadpool_redis::Pool,
+    cache_pool: CachePool,
     client_manager: ClientManager,
 }
 

@@ -1,10 +1,9 @@
 use super::error::ApiError;
 use super::prelude::CachePayload;
 use crate::handler::view::authorize::InitialAuthorizationRequest;
-use crate::service::cache::Pool as CachePool;
+use crate::service::cache::CachePool;
 use crate::service::client::ClientManager;
 use axum::{extract::Path, response::Redirect, Extension};
-use deadpool_redis::redis;
 use oauth2::{CsrfToken, PkceCodeChallenge, PkceCodeVerifier};
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
@@ -26,11 +25,8 @@ pub async fn handler(
         kind,
         state
     );
-    let mut cache_conn = cache.get().await?;
-    let initial_str: Option<String> = redis::cmd("GETDEL")
-        .arg(state.as_str())
-        .query_async(&mut cache_conn)
-        .await?;
+    let mut cache_conn = cache.acquire().await?;
+    let initial_str: Option<String> = cache_conn.remove(state.as_str()).await?;
     let initial_str = initial_str.ok_or_else(|| ApiError::bad_request("state not found"))?;
     let initial = InitialAuthorizationRequest::from_query_string(&initial_str)?;
     // build oauth client
@@ -56,11 +52,8 @@ pub async fn handler(
         pkce_verifier,
     };
     let auth_request = auth_request.to_query_string()?;
-    redis::cmd("SETEX")
-        .arg(csrf_token.secret())
-        .arg(60i32 * 10)
-        .arg(auth_request)
-        .query_async(&mut cache_conn)
+    cache_conn
+        .set_exp(csrf_token.secret(), auth_request.as_str(), 60i64 * 10)
         .await?;
 
     let auth_url = auth_url.to_string();

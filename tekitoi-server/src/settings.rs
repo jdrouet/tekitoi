@@ -1,3 +1,4 @@
+use crate::service::cache::CachePool;
 use crate::service::client::{ClientManager, ClientManagerSettings};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::path::PathBuf;
@@ -14,7 +15,8 @@ pub struct Settings {
     #[serde(default = "Settings::default_static_path")]
     static_path: PathBuf,
     base_url: Option<String>,
-    cache: deadpool_redis::Config,
+    #[serde(default)]
+    cache: crate::service::cache::CacheConfig,
     log_level: Option<String>,
     #[serde(default)]
     pub clients: ClientManagerSettings,
@@ -64,11 +66,8 @@ impl Settings {
         SocketAddr::from((self.host, self.port))
     }
 
-    pub fn build_cache_pool(&self) -> deadpool_redis::Pool {
-        tracing::trace!("creating cache pool with config {:?}", self.cache);
-        self.cache
-            .create_pool(Some(deadpool_redis::Runtime::Tokio1))
-            .expect("couldn't build cache pool")
+    pub fn build_cache_pool(&self) -> CachePool {
+        self.cache.build()
     }
 
     fn base_url(&self) -> String {

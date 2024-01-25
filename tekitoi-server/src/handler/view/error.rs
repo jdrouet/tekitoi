@@ -4,6 +4,8 @@ use axum::{
 };
 use sailfish::TemplateOnce;
 
+use crate::service::cache::CacheError;
+
 #[derive(Clone, Debug, TemplateOnce)]
 #[template(path = "error.html")]
 pub struct ViewError {
@@ -36,6 +38,15 @@ impl IntoResponse for ViewError {
             .expect("couldn't render error page");
 
         (self.code, Html(template)).into_response()
+    }
+}
+
+impl From<CacheError> for ViewError {
+    fn from(value: CacheError) -> Self {
+        match value {
+            CacheError::RedisClient(inner) => Self::from(inner),
+            CacheError::RedisPool(inner) => Self::from(inner),
+        }
     }
 }
 

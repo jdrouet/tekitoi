@@ -1,11 +1,10 @@
 use super::error::ApiError;
 use super::prelude::CachePayload;
 use crate::handler::api::authorize::AuthorizationRequest;
-use crate::service::cache::Pool as CachePool;
+use crate::service::cache::CachePool;
 use axum::extract::{Path, Query};
 use axum::response::Redirect;
 use axum::Extension;
-use deadpool_redis::redis;
 use serde_qs as qs;
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
@@ -59,11 +58,13 @@ pub async fn handler(
     Query(query): Query<QueryParams>,
 ) -> Result<Redirect, ApiError> {
     tracing::trace!("redirection requested");
-    let mut cache_conn = cache.get().await?;
-    let auth_request: String = redis::cmd("GETDEL")
-        .arg(query.state())
-        .query_async(&mut cache_conn)
-        .await?;
+    let mut cache_conn = cache.acquire().await?;
+    let auth_request = cache_conn.remove(query.state()).await?;
+    let Some(auth_request) = auth_request else {
+        return Err(ApiError::bad_request(
+            "unable to find authorization request",
+        ));
+    };
     let auth_request = AuthorizationRequest::from_query_string(&auth_request)?;
     let query = match query {
         QueryParams::Ok(value) => value,
@@ -92,11 +93,12 @@ pub async fn handler(
         kind,
     };
     let redirect_request = redirect_request.to_query_string()?;
-    let _ = redis::cmd("SETEX")
-        .arg(code_challenge.as_str())
-        .arg(60i32 * 10)
-        .arg(redirect_request.as_str())
-        .query_async(&mut cache_conn)
+    cache_conn
+        .set_exp(
+            code_challenge.as_str(),
+            redirect_request.as_str(),
+            60i64 * 10,
+        )
         .await?;
     tracing::debug!("redirecting to {:?}", url);
     //

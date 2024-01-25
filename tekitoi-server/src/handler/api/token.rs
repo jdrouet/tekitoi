@@ -1,10 +1,9 @@
 use super::error::ApiError;
 use super::prelude::CachePayload;
 use crate::handler::api::redirect::RedirectedAuthorizationRequest;
-use crate::service::cache::Pool as CachePool;
+use crate::service::cache::CachePool;
 use crate::service::client::ClientManager;
 use axum::{Extension, Json};
-use deadpool_redis::redis;
 use oauth2::basic::BasicTokenType;
 use oauth2::reqwest::async_http_client;
 use oauth2::{
@@ -37,11 +36,13 @@ pub async fn handler(
     Json(payload): Json<TokenRequestPayload>,
 ) -> Result<Json<StandardTokenResponse<EmptyExtraTokenFields, BasicTokenType>>, ApiError> {
     tracing::trace!("access-token requested with code={:?}", payload.code);
-    let mut cache_conn = cache.get().await?;
-    let auth_request: String = redis::cmd("GETDEL")
-        .arg(payload.code.as_str())
-        .query_async(&mut cache_conn)
-        .await?;
+    let mut cache_conn = cache.acquire().await?;
+    let auth_request = cache_conn.remove(payload.code.as_str()).await?;
+    let Some(auth_request) = auth_request else {
+        return Err(ApiError::bad_request(
+            "unable to find authorization request",
+        ));
+    };
     let auth_request = RedirectedAuthorizationRequest::from_query_string(&auth_request)?;
     tracing::trace!("received authorization request");
     //
@@ -88,10 +89,11 @@ pub async fn handler(
         EmptyExtraTokenFields {},
     );
     // TODO limit the storage duration based on the token expiration
-    let _ = redis::cmd("SET")
-        .arg(token_response.access_token().secret())
-        .arg(token_result_str.as_str())
-        .query_async(&mut cache_conn)
+    cache_conn
+        .set(
+            token_response.access_token().secret(),
+            token_result_str.as_str(),
+        )
         .await?;
     //
     Ok(Json(token_response))
