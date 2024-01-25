@@ -60,10 +60,11 @@ impl Settings {
 
 impl Settings {
     pub fn build() -> Self {
-        config::Config::new()
-            .with_merged(config::Environment::new())
+        config::Config::builder()
+            .add_source(config::Environment::default())
+            .build()
             .expect("couldn't merge with environment")
-            .try_into()
+            .try_deserialize()
             .expect("couldn't build settings")
     }
 
