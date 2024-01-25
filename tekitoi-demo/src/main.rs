@@ -4,12 +4,15 @@ mod redirect;
 mod settings;
 mod status;
 
-use actix_web::{web, App, HttpServer};
+use axum::extract::Extension;
+use axum::routing::get;
 use std::str::FromStr;
+use std::sync::Arc;
+use tokio::net::TcpListener;
 use tracing::Level;
 use tracing_subscriber::FmtSubscriber;
 
-#[actix_web::main]
+#[tokio::main]
 async fn main() -> std::io::Result<()> {
     let log_level = std::env::var("LOG")
         .ok()
@@ -20,24 +23,21 @@ async fn main() -> std::io::Result<()> {
 
     let cfg = settings::Settings::build();
     let address = cfg.address();
-    tracing::trace!("loaded configuration {:?}", cfg);
-    let oauth_client = web::Data::new(cfg.oauth_client());
-    let redis_client = web::Data::new(cfg.redis_client());
-    let global_config = web::Data::new(cfg);
+
+    let tcp_listener = TcpListener::bind(address).await.unwrap();
 
     tracing::debug!("starting server");
-    HttpServer::new(move || {
-        App::new()
-            .app_data(oauth_client.clone())
-            .app_data(redis_client.clone())
-            .app_data(global_config.clone())
-            .service(authorize::handler)
-            .service(status::handler)
-            .service(redirect::handler)
-            .service(home::handler)
-    })
-    .bind(address)?
-    .workers(1)
-    .run()
-    .await
+    let redis_client = cfg.redis_client();
+
+    let app = axum::Router::new()
+        .route("/", get(home::handler))
+        .route("/api/redirect", get(redirect::handler))
+        .route("/api/status", get(status::handler))
+        .route("/api/authorize", get(authorize::handler))
+        .layer(Extension(cfg.oauth_client()))
+        .layer(Extension(Arc::new(cfg)))
+        .with_state(redis_client);
+
+    axum::serve(tcp_listener, app).await?;
+    Ok(())
 }

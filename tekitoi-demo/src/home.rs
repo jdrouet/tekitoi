@@ -1,5 +1,6 @@
-use actix_web::http::header::ContentType;
-use actix_web::{get, web::Data, web::Query, HttpResponse};
+use std::sync::Arc;
+
+use axum::{extract::Query, response::Html, Extension};
 use sailfish::TemplateOnce;
 
 #[derive(TemplateOnce)]
@@ -39,20 +40,18 @@ impl QueryParams {
     }
 }
 
-#[get("/")]
-async fn handler(
-    config: Data<crate::settings::Settings>,
-    params: Query<QueryParams>,
-) -> HttpResponse {
+// #[get("/")]
+pub async fn handler(
+    Extension(config): Extension<Arc<crate::settings::Settings>>,
+    Query(params): Query<QueryParams>,
+) -> Html<String> {
     tracing::trace!("home requested");
-    let params = params.into_inner();
     let user = match params.get_user(config.api_url.as_str()).await {
         Ok(value) => value,
         Err(err) => err,
     };
     let ctx = HomeTemplate::new(params.token, user);
     let template = ctx.render_once().unwrap();
-    HttpResponse::Ok()
-        .insert_header(ContentType::html())
-        .body(template)
+
+    Html(template)
 }

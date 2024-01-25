@@ -1,10 +1,12 @@
+use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+
 use oauth2::basic::BasicClient;
 use oauth2::{AuthUrl, ClientId, ClientSecret, RedirectUrl, TokenUrl};
 
 #[derive(Debug, serde::Deserialize)]
 pub struct Settings {
     #[serde(default = "Settings::default_host")]
-    host: String,
+    host: IpAddr,
     #[serde(default = "Settings::default_port")]
     port: u16,
     //
@@ -25,8 +27,8 @@ pub struct Settings {
 }
 
 impl Settings {
-    fn default_host() -> String {
-        "localhost".into()
+    fn default_host() -> IpAddr {
+        IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1))
     }
 
     fn default_port() -> u16 {
@@ -68,8 +70,8 @@ impl Settings {
             .expect("couldn't build settings")
     }
 
-    pub fn address(&self) -> String {
-        format!("{}:{}", self.host, self.port)
+    pub fn address(&self) -> SocketAddr {
+        SocketAddr::from((self.host, self.port))
     }
 
     pub fn base_url(&self) -> String {
