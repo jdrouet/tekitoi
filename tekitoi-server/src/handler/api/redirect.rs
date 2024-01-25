@@ -2,10 +2,9 @@ use super::error::ApiError;
 use super::prelude::CachePayload;
 use crate::handler::api::authorize::AuthorizationRequest;
 use crate::service::cache::Pool as CachePool;
-use crate::service::client::ClientManager;
-use actix_web::http::header::LOCATION;
-use actix_web::web::{Data, Path, Query};
-use actix_web::{get, HttpResponse};
+use axum::extract::{Path, Query};
+use axum::response::Redirect;
+use axum::Extension;
 use deadpool_redis::redis;
 use serde_qs as qs;
 
@@ -53,22 +52,20 @@ fn merge_url<S: serde::Serialize>(url: &url::Url, params: &S) -> Result<String, 
     Ok(format!("{}?{}", url, queries))
 }
 
-#[get("/api/redirect/{kind}")]
-async fn handle(
-    _clients: Data<ClientManager>,
-    cache: Data<CachePool>,
-    path: Path<String>,
-    query: Query<QueryParams>,
-) -> Result<HttpResponse, ApiError> {
+// #[get("/api/redirect/{kind}")]
+pub async fn handler(
+    Extension(cache): Extension<CachePool>,
+    Path(kind): Path<String>,
+    Query(query): Query<QueryParams>,
+) -> Result<Redirect, ApiError> {
     tracing::trace!("redirection requested");
-    let kind = path.into_inner();
     let mut cache_conn = cache.get().await?;
     let auth_request: String = redis::cmd("GETDEL")
         .arg(query.state())
         .query_async(&mut cache_conn)
         .await?;
     let auth_request = AuthorizationRequest::from_query_string(&auth_request)?;
-    let query = match query.into_inner() {
+    let query = match query {
         QueryParams::Ok(value) => value,
         QueryParams::Error(value) => {
             tracing::debug!(
@@ -76,9 +73,7 @@ async fn handle(
                 value.error_description
             );
             let url = merge_url(&auth_request.initial.redirect_uri, &value)?;
-            return Ok(HttpResponse::Found()
-                .append_header((LOCATION, url))
-                .finish());
+            return Ok(Redirect::temporary(&url));
         }
     };
     let code_challenge = auth_request.initial.code_challenge.clone();
@@ -105,7 +100,5 @@ async fn handle(
         .await?;
     tracing::debug!("redirecting to {:?}", url);
     //
-    Ok(HttpResponse::Found()
-        .append_header((LOCATION, url))
-        .finish())
+    Ok(Redirect::temporary(&url))
 }

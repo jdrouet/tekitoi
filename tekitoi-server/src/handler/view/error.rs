@@ -1,6 +1,7 @@
-use actix_web::http::header::ContentType;
-use actix_web::http::StatusCode;
-use actix_web::{HttpResponse, ResponseError};
+use axum::{
+    http::StatusCode,
+    response::{Html, IntoResponse, Response},
+};
 use sailfish::TemplateOnce;
 
 #[derive(Clone, Debug, TemplateOnce)]
@@ -27,15 +28,14 @@ impl std::fmt::Display for ViewError {
     }
 }
 
-impl ResponseError for ViewError {
-    fn error_response(&self) -> HttpResponse {
+impl IntoResponse for ViewError {
+    fn into_response(self) -> Response {
         let template = self
             .clone()
             .render_once()
             .expect("couldn't render error page");
-        HttpResponse::build(self.code)
-            .insert_header(ContentType::html())
-            .body(template)
+
+        (self.code, Html(template)).into_response()
     }
 }
 

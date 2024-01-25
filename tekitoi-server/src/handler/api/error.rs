@@ -1,10 +1,14 @@
-use actix_web::http::StatusCode;
-use actix_web::{HttpResponse, ResponseError};
+use axum::{
+    http::StatusCode,
+    response::{IntoResponse, Response},
+    Json,
+};
 
 #[derive(Debug)]
 pub enum ApiError {
     BadRequest { message: String },
     InternalServer { message: String },
+    Unauthorized { message: String },
     // ServiceUnavailable { message: String },
 }
 
@@ -20,12 +24,17 @@ impl ApiError {
             message: value.to_string(),
         }
     }
+    pub fn unauthorized<T: ToString>(value: T) -> Self {
+        Self::Unauthorized {
+            message: value.to_string(),
+        }
+    }
 
     fn status_code(&self) -> StatusCode {
         match self {
             Self::BadRequest { .. } => StatusCode::BAD_REQUEST,
             Self::InternalServer { .. } => StatusCode::INTERNAL_SERVER_ERROR,
-            // Self::ServiceUnavailable { .. } => StatusCode::SERVICE_UNAVAILABLE,
+            Self::Unauthorized { .. } => StatusCode::UNAUTHORIZED,
         }
     }
 
@@ -33,7 +42,7 @@ impl ApiError {
         match self {
             Self::BadRequest { message } => message.as_str(),
             Self::InternalServer { message } => message.as_str(),
-            // Self::ServiceUnavailable { message } => message.as_str(),
+            Self::Unauthorized { message } => message.as_str(),
         }
     }
 }
@@ -51,9 +60,9 @@ impl std::fmt::Display for ApiError {
     }
 }
 
-impl ResponseError for ApiError {
-    fn error_response(&self) -> HttpResponse {
-        HttpResponse::build(self.status_code()).json(self.message())
+impl IntoResponse for ApiError {
+    fn into_response(self) -> Response {
+        (self.status_code(), Json(self.message())).into_response()
     }
 }
 

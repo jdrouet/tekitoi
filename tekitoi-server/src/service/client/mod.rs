@@ -2,7 +2,10 @@ pub mod github;
 pub mod gitlab;
 pub mod google;
 
-use std::collections::{HashMap, HashSet};
+use std::{
+    collections::{HashMap, HashSet},
+    sync::Arc,
+};
 use url::Url;
 
 #[derive(Debug, Default, serde::Deserialize)]
@@ -10,19 +13,20 @@ pub struct ClientManagerSettings(HashMap<String, ClientSettings>);
 
 impl ClientManagerSettings {
     pub fn build(&self, base_url: &str) -> anyhow::Result<ClientManager> {
-        Ok(ClientManager(
+        Ok(ClientManager(Arc::new(
             self.0
                 .iter()
                 .map(|(name, item)| item.build(name.as_str(), base_url))
                 .collect::<anyhow::Result<HashMap<_, _>>>()?,
-        ))
+        )))
     }
 }
 
-pub struct ClientManager(HashMap<String, Client>);
+#[derive(Clone)]
+pub struct ClientManager(Arc<HashMap<String, Client>>);
 
-impl<'a> ClientManager {
-    pub fn get_client(&self, client_id: &str) -> Result<&Client, &'static str> {
+impl ClientManager {
+    pub fn get(&self, client_id: &str) -> Result<&Client, &'static str> {
         self.0.get(client_id).ok_or("Client not found.")
     }
 }

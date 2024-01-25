@@ -1,4 +1,5 @@
 use crate::service::client::{ClientManager, ClientManagerSettings};
+use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::path::PathBuf;
 use std::str::FromStr;
 use tracing::Level;
@@ -7,7 +8,7 @@ use tracing_subscriber::FmtSubscriber;
 #[derive(Debug, serde::Deserialize)]
 pub struct Settings {
     #[serde(default = "Settings::default_host")]
-    host: String,
+    host: IpAddr,
     #[serde(default = "Settings::default_port")]
     port: u16,
     #[serde(default = "Settings::default_static_path")]
@@ -20,8 +21,8 @@ pub struct Settings {
 }
 
 impl Settings {
-    fn default_host() -> String {
-        "localhost".into()
+    fn default_host() -> IpAddr {
+        IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1))
     }
 
     fn default_port() -> u16 {
@@ -59,8 +60,8 @@ impl Settings {
             .expect("couldn't deserialize settings")
     }
 
-    pub fn address(&self) -> String {
-        format!("{}:{}", self.host, self.port)
+    pub fn address(&self) -> SocketAddr {
+        SocketAddr::from((self.host, self.port))
     }
 
     pub fn build_cache_pool(&self) -> deadpool_redis::Pool {

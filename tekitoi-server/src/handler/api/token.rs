@@ -3,8 +3,7 @@ use super::prelude::CachePayload;
 use crate::handler::api::redirect::RedirectedAuthorizationRequest;
 use crate::service::cache::Pool as CachePool;
 use crate::service::client::ClientManager;
-use actix_web::web::{Data, Form};
-use actix_web::{post, HttpResponse};
+use axum::{Extension, Json};
 use deadpool_redis::redis;
 use oauth2::basic::BasicTokenType;
 use oauth2::reqwest::async_http_client;
@@ -31,13 +30,12 @@ pub struct TokenRequestPayload {
     pub code: String,
 }
 
-#[post("/api/access-token")]
-async fn handle(
-    clients: Data<ClientManager>,
-    cache: Data<CachePool>,
-    payload: Form<TokenRequestPayload>,
-) -> Result<HttpResponse, ApiError> {
-    let payload = payload.into_inner();
+// #[post("/api/access-token")]
+pub async fn handler(
+    Extension(clients): Extension<ClientManager>,
+    Extension(cache): Extension<CachePool>,
+    Json(payload): Json<TokenRequestPayload>,
+) -> Result<Json<StandardTokenResponse<EmptyExtraTokenFields, BasicTokenType>>, ApiError> {
     tracing::trace!("access-token requested with code={:?}", payload.code);
     let mut cache_conn = cache.get().await?;
     let auth_request: String = redis::cmd("GETDEL")
@@ -52,7 +50,7 @@ async fn handle(
     let client_id = auth_request.inner.initial.client_id;
     let pkce_verifier = auth_request.inner.pkce_verifier;
     let oauth_client = clients
-        .get_client(client_id.as_str())
+        .get(client_id.as_str())
         .map_err(ApiError::internal_server)?
         .providers
         .get(kind.as_str())
@@ -96,5 +94,5 @@ async fn handle(
         .query_async(&mut cache_conn)
         .await?;
     //
-    Ok(HttpResponse::Ok().json(token_response))
+    Ok(Json(token_response))
 }
