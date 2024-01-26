@@ -7,7 +7,7 @@ edition = "2021"
 
 [dependencies]
 anyhow = { version = "1.0" }
-axum = { version = "0.7" }
+axum = { version = "0.7", features = ["tracing"] }
 clap = { version = "3.2", features = ["derive"] }
 config = { version = "0.13", default-features = false, features = ["toml"] }
 deadpool-redis = { version = "0.14", features = ["serde"] }
@@ -20,6 +20,7 @@ sailfish = { version = "0.8" }
 serde = { version = "1.0" }
 serde_qs = { version = "0.12" }
 serde_json = { version = "1.0" }
+tower-http = { version = "0.5.0", features = ["trace"] }
 tracing = { version = "0.1" }
 tracing-subscriber = { version = "0.3" }
 url = { version = "2.5", default-features = false, features = ["serde"] }

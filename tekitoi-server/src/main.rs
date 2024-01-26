@@ -16,12 +16,13 @@ use tekitoi_server::Server;
 // }
 
 #[tokio::main]
-async fn main() -> std::io::Result<()> {
+async fn main() {
     let args = arguments::Arguments::build();
     let cfg = args.settings();
     cfg.set_logger();
 
     let server = Server::new(cfg);
+    tracing::debug!("starting server");
     server.listen().await;
 
     // let address = cfg.address();
@@ -41,8 +42,6 @@ async fn main() -> std::io::Result<()> {
     // .bind(address)?
     // .run()
     // .await
-
-    Ok(())
 }
 
 // #[cfg(test)]

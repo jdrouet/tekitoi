@@ -3,7 +3,7 @@ use super::prelude::CachePayload;
 use crate::handler::api::redirect::RedirectedAuthorizationRequest;
 use crate::service::cache::CachePool;
 use crate::service::client::ClientManager;
-use axum::{Extension, Json};
+use axum::{Extension, Form, Json};
 use oauth2::basic::BasicTokenType;
 use oauth2::reqwest::async_http_client;
 use oauth2::{
@@ -29,11 +29,11 @@ pub struct TokenRequestPayload {
     pub code: String,
 }
 
-// #[post("/api/access-token")]
 pub async fn handler(
     Extension(clients): Extension<ClientManager>,
     Extension(cache): Extension<CachePool>,
-    Json(payload): Json<TokenRequestPayload>,
+    // Json(payload): Json<TokenRequestPayload>,
+    Form(payload): Form<TokenRequestPayload>,
 ) -> Result<Json<StandardTokenResponse<EmptyExtraTokenFields, BasicTokenType>>, ApiError> {
     tracing::trace!("access-token requested with code={:?}", payload.code);
     let mut cache_conn = cache.acquire().await?;

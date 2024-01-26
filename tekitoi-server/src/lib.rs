@@ -3,6 +3,7 @@ use std::net::SocketAddr;
 use axum::Extension;
 use service::{cache::CachePool, client::ClientManager};
 use tokio::net::TcpListener;
+use tower_http::trace::TraceLayer;
 
 mod handler;
 mod service;
@@ -35,9 +36,10 @@ impl Server {
                 "/api/authorize/:kind/:state",
                 get(handler::api::authorize::handler),
             )
-            .route("/api/redirect/{kind}", get(handler::api::redirect::handler))
+            .route("/api/redirect/:kind", get(handler::api::redirect::handler))
             .route("/api/status", get(handler::api::status::handler))
             .route("/api/user", get(handler::api::user::handler))
+            .layer(TraceLayer::new_for_http())
             .layer(Extension(self.cache_pool))
             .layer(Extension(self.client_manager))
     }
