@@ -62,85 +62,127 @@ pub async fn handler(
     Ok(Redirect::temporary(&auth_url))
 }
 
-// #[cfg(test)]
-// mod tests {
-//     use crate::handler::api::prelude::CachePayload;
-//     use crate::handler::view::authorize::InitialAuthorizationRequest;
-//     use crate::tests::TestServer;
-//     use actix_web::http::{header::LOCATION, StatusCode};
-//     use deadpool_redis::redis;
-//     use url::Url;
+#[cfg(test)]
+mod tests {
+    use crate::handler::api::prelude::CachePayload;
+    use crate::{settings::Settings, Server};
+    use axum::body::Body;
+    use axum::extract::Request;
+    use axum::http::header::LOCATION;
+    use axum::http::StatusCode;
+    use http_body_util::BodyExt;
+    use std::path::PathBuf;
+    use tower::util::ServiceExt;
 
-//     #[actix_web::test]
-//     async fn unknown_state() {
-//         let req = actix_web::test::TestRequest::get()
-//             .uri("/api/authorize/github/whatever")
-//             .to_request();
-//         let srv = TestServer::from_simple();
-//         let res = srv.execute(req).await;
-//         assert_eq!(res.status(), StatusCode::BAD_REQUEST);
-//         let body: String = actix_web::test::read_body_json(res).await;
-//         assert_eq!(body, "state not found");
-//     }
+    fn settings() -> Settings {
+        Settings::build(Some(PathBuf::from("./tests/simple.toml")))
+    }
 
-//     #[actix_web::test]
-//     async fn valid_provider() {
-//         let srv = TestServer::from_simple();
-//         let initial = InitialAuthorizationRequest {
-//             client_id: "main-client-id".into(),
-//             code_challenge: "code-challenge".into(),
-//             code_challenge_method: "S256".into(),
-//             state: "state".into(),
-//             redirect_uri: Url::parse("http://localhost:4444/api/redirect").unwrap(),
-//         };
-//         let random_token = oauth2::CsrfToken::new_random();
-//         let mut cache_conn = srv.cache_pool.get().await.unwrap();
-//         let _: Option<String> = redis::cmd("SETEX")
-//             .arg(random_token.secret())
-//             .arg(60i32 * 10)
-//             .arg(initial.to_query_string().unwrap())
-//             .query_async(&mut cache_conn)
-//             .await
-//             .unwrap();
-//         let uri = format!("/api/authorize/github/{}", random_token.secret());
-//         let req = actix_web::test::TestRequest::get()
-//             .uri(uri.as_str())
-//             .to_request();
-//         let res = srv.execute(req).await;
-//         assert_eq!(res.status(), StatusCode::FOUND);
-//         let location = res.headers().get(LOCATION).unwrap().to_str().unwrap();
-//         let location = Url::parse(location).unwrap();
-//         assert_eq!(location.domain(), Some("github.com"));
-//         assert_eq!(location.scheme(), "https");
-//         assert_eq!(location.path(), "/login/oauth/authorize");
-//     }
+    #[tokio::test]
+    async fn unknown_state() {
+        let app = Server::new(settings()).router();
 
-//     #[actix_web::test]
-//     async fn invalid_provider() {
-//         let srv = TestServer::from_simple();
-//         let initial = InitialAuthorizationRequest {
-//             client_id: "main-client-id".into(),
-//             code_challenge: "code-challenge".into(),
-//             code_challenge_method: "S256".into(),
-//             state: "state".into(),
-//             redirect_uri: Url::parse("http://localhost:4444/api/redirect").unwrap(),
-//         };
-//         let random_token = oauth2::CsrfToken::new_random();
-//         let mut cache_conn = srv.cache_pool.get().await.unwrap();
-//         let _: Option<String> = redis::cmd("SETEX")
-//             .arg(random_token.secret())
-//             .arg(60i32 * 10)
-//             .arg(initial.to_query_string().unwrap())
-//             .query_async(&mut cache_conn)
-//             .await
-//             .unwrap();
-//         let uri = format!("/api/authorize/unknown/{}", random_token.secret());
-//         let req = actix_web::test::TestRequest::get()
-//             .uri(uri.as_str())
-//             .to_request();
-//         let res = srv.execute(req).await;
-//         assert_eq!(res.status(), StatusCode::BAD_REQUEST);
-//         let body: String = actix_web::test::read_body_json(res).await;
-//         assert_eq!(body, "provider not found");
-//     }
-// }
+        let res = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/authorize/github/whatever")
+                    .method("GET")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(res.status(), StatusCode::BAD_REQUEST);
+
+        let body = res.into_body().collect().await.unwrap().to_bytes();
+        let body: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(body, serde_json::json!("state not found"));
+    }
+
+    #[tokio::test]
+    async fn valid_provider() {
+        let server = Server::new(settings());
+        let initial = super::InitialAuthorizationRequest {
+            client_id: "main-client-id".into(),
+            code_challenge: "code-challenge".into(),
+            code_challenge_method: "S256".into(),
+            state: "state".into(),
+            redirect_uri: url::Url::parse("http://localhost:4444/api/redirect").unwrap(),
+        };
+        let random_token = oauth2::CsrfToken::new_random();
+        let mut cache_client = server.cache_pool.acquire().await.unwrap();
+        cache_client
+            .set_exp(
+                random_token.secret(),
+                &initial.to_query_string().unwrap(),
+                60i64 * 10,
+            )
+            .await
+            .unwrap();
+
+        let app = server.router();
+        let uri = format!("/api/authorize/github/{}", random_token.secret());
+
+        let res = app
+            .oneshot(
+                Request::builder()
+                    .uri(&uri)
+                    .method("GET")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(res.status(), StatusCode::TEMPORARY_REDIRECT);
+
+        let location = res.headers().get(LOCATION).unwrap().to_str().unwrap();
+        let location = url::Url::parse(location).unwrap();
+        assert_eq!(location.domain(), Some("github.com"));
+        assert_eq!(location.scheme(), "https");
+        assert_eq!(location.path(), "/login/oauth/authorize");
+    }
+
+    #[tokio::test]
+    async fn invalid_provider() {
+        let server = Server::new(settings());
+        let initial = super::InitialAuthorizationRequest {
+            client_id: "main-client-id".into(),
+            code_challenge: "code-challenge".into(),
+            code_challenge_method: "S256".into(),
+            state: "state".into(),
+            redirect_uri: url::Url::parse("http://localhost:4444/api/redirect").unwrap(),
+        };
+        let random_token = oauth2::CsrfToken::new_random();
+        let mut cache_client = server.cache_pool.acquire().await.unwrap();
+        cache_client
+            .set_exp(
+                random_token.secret(),
+                &initial.to_query_string().unwrap(),
+                60i64 * 10,
+            )
+            .await
+            .unwrap();
+
+        let app = server.router();
+        let uri = format!("/api/authorize/unknown/{}", random_token.secret());
+
+        let res = app
+            .oneshot(
+                Request::builder()
+                    .uri(&uri)
+                    .method("GET")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(res.status(), StatusCode::BAD_REQUEST);
+
+        let body = res.into_body().collect().await.unwrap().to_bytes();
+        let body: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(body, serde_json::json!("provider not found"));
+    }
+}

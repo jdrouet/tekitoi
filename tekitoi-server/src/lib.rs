@@ -26,7 +26,7 @@ impl Server {
 }
 
 impl Server {
-    fn router(self) -> axum::Router {
+    pub fn router(self) -> axum::Router {
         use axum::routing::{get, post};
 
         axum::Router::new()

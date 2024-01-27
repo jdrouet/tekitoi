@@ -22,6 +22,20 @@ pub struct Settings {
     pub clients: ClientManagerSettings,
 }
 
+impl Default for Settings {
+    fn default() -> Self {
+        Self {
+            host: Self::default_host(),
+            port: Self::default_port(),
+            static_path: Self::default_static_path(),
+            base_url: None,
+            cache: Default::default(),
+            log_level: Some("INFO".into()),
+            clients: ClientManagerSettings::default(),
+        }
+    }
+}
+
 impl Settings {
     fn default_host() -> IpAddr {
         IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1))
@@ -37,22 +51,10 @@ impl Settings {
 }
 
 impl Settings {
-    #[cfg(test)]
-    pub fn from_path(path: &str) -> Self {
-        let path = std::path::PathBuf::from(path);
-        config::Config::builder()
-            .add_source(config::File::from(path))
-            .add_source(config::Environment::default().separator("__"))
-            .build()
-            .expect("couldn't build settings")
-            .try_deserialize()
-            .expect("couldn't deserialize settings")
-    }
-
-    pub fn build(config_path: &Option<PathBuf>) -> Self {
+    pub fn build(config_path: Option<PathBuf>) -> Self {
         let cfg = config::Config::builder();
         let cfg = match config_path {
-            Some(path) => cfg.add_source(config::File::from(path.clone())),
+            Some(path) => cfg.add_source(config::File::from(path)),
             None => cfg,
         };
         cfg.add_source(config::Environment::default().separator("__"))

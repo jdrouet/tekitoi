@@ -62,82 +62,92 @@ pub async fn handler(
     Ok(Html(template))
 }
 
-// #[cfg(test)]
-// mod tests {
-//     use crate::tests::TestServer;
-//     use actix_web::http::StatusCode;
+#[cfg(test)]
+mod tests {
+    use std::path::PathBuf;
 
-//     #[actix_web::test]
-//     async fn basic() {
-//         let client = oauth2::basic::BasicClient::new(
-//             oauth2::ClientId::new("main-client-id".into()),
-//             None,
-//             oauth2::AuthUrl::new("http://authorize/authorize".into()).unwrap(),
-//             None,
-//         )
-//         .set_redirect_uri(
-//             oauth2::RedirectUrl::new("http://localhost:4444/api/redirect".into()).unwrap(),
-//         );
-//         // Generate a PKCE challenge.
-//         let (pkce_challenge, _pkce_verifier) = oauth2::PkceCodeChallenge::new_random_sha256();
+    use crate::{settings::Settings, Server};
+    use axum::body::Body;
+    use axum::extract::Request;
+    use axum::http::StatusCode;
+    use http_body_util::BodyExt;
+    use tower::util::ServiceExt;
 
-//         // Generate the full authorization URL.
-//         let (auth_url, _csrf_token) = client
-//             .authorize_url(oauth2::CsrfToken::new_random)
-//             // Set the desired scopes.
-//             // .add_scope(Scope::new("read".to_string()))
-//             // .add_scope(Scope::new("write".to_string()))
-//             // Set the PKCE code challenge.
-//             .set_pkce_challenge(pkce_challenge)
-//             .url();
-//         let auth_url = auth_url.to_string();
-//         let auth_uri = auth_url.strip_prefix("http://authorize").unwrap();
-//         let req = actix_web::test::TestRequest::get()
-//             .uri(auth_uri)
-//             .to_request();
-//         let srv = TestServer::from_simple();
-//         let res = srv.execute(req).await;
-//         assert_eq!(res.status(), StatusCode::OK);
-//         let body = actix_web::test::read_body(res).await;
-//         let payload = std::str::from_utf8(&body).unwrap();
-//         assert!(payload.contains("github"));
-//         let re = regex::Regex::new("\"/api/authorize/github/(.*)\"").unwrap();
-//         assert!(re.find(payload).is_some());
-//     }
+    fn settings() -> Settings {
+        Settings::build(Some(PathBuf::from("./tests/simple.toml")))
+    }
 
-//     #[actix_web::test]
-//     async fn client_not_found() {
-//         let client = oauth2::basic::BasicClient::new(
-//             oauth2::ClientId::new("unknown-client-id".into()),
-//             None,
-//             oauth2::AuthUrl::new("http://authorize/authorize".into()).unwrap(),
-//             None,
-//         )
-//         .set_redirect_uri(
-//             oauth2::RedirectUrl::new("http://localhost:4444/api/redirect".into()).unwrap(),
-//         );
-//         // Generate a PKCE challenge.
-//         let (pkce_challenge, _pkce_verifier) = oauth2::PkceCodeChallenge::new_random_sha256();
+    fn create_auth_uri(client_id: &str) -> String {
+        let client = oauth2::basic::BasicClient::new(
+            oauth2::ClientId::new(client_id.into()),
+            None,
+            oauth2::AuthUrl::new("http://authorize/authorize".into()).unwrap(),
+            None,
+        )
+        .set_redirect_uri(
+            oauth2::RedirectUrl::new("http://localhost:4444/api/redirect".into()).unwrap(),
+        );
+        // Generate a PKCE challenge.
+        let (pkce_challenge, _pkce_verifier) = oauth2::PkceCodeChallenge::new_random_sha256();
 
-//         // Generate the full authorization URL.
-//         let (auth_url, _csrf_token) = client
-//             .authorize_url(oauth2::CsrfToken::new_random)
-//             // Set the desired scopes.
-//             // .add_scope(Scope::new("read".to_string()))
-//             // .add_scope(Scope::new("write".to_string()))
-//             // Set the PKCE code challenge.
-//             .set_pkce_challenge(pkce_challenge)
-//             .url();
-//         let auth_url = auth_url.to_string();
-//         let auth_uri = auth_url.strip_prefix("http://authorize").unwrap();
-//         let req = actix_web::test::TestRequest::get()
-//             .uri(auth_uri)
-//             .to_request();
-//         let srv = TestServer::from_simple();
-//         let res = srv.execute(req).await;
-//         assert_eq!(res.status(), StatusCode::BAD_REQUEST);
-//         let body = actix_web::test::read_body(res).await;
-//         let payload = std::str::from_utf8(&body).unwrap();
-//         assert!(payload.contains("Client not found."));
-//     }
-// }
+        // Generate the full authorization URL.
+        let (auth_url, _csrf_token) = client
+            .authorize_url(oauth2::CsrfToken::new_random)
+            .set_pkce_challenge(pkce_challenge)
+            .url();
+        let auth_url = auth_url.to_string();
+        let auth_uri = auth_url.strip_prefix("http://authorize").unwrap();
+        auth_uri.to_string()
+    }
+
+    #[tokio::test]
+    async fn simple() {
+        let auth_uri = create_auth_uri("main-client-id");
+
+        let app = Server::new(settings()).router();
+
+        let res = app
+            .oneshot(
+                Request::builder()
+                    .uri(auth_uri)
+                    .method("GET")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(res.status(), StatusCode::OK);
+
+        let body = res.into_body().collect().await.unwrap().to_bytes();
+        let body = String::from_utf8_lossy(&body[..]);
+        assert!(body.contains("Connect with github"));
+
+        let re = regex::Regex::new("\"/api/authorize/github/(.*)\"").unwrap();
+        assert!(re.find(&body).is_some());
+    }
+
+    #[tokio::test]
+    async fn client_not_found() {
+        let auth_uri = create_auth_uri("unknown-client-id");
+
+        let app = Server::new(settings()).router();
+
+        let res = app
+            .oneshot(
+                Request::builder()
+                    .uri(auth_uri)
+                    .method("GET")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(res.status(), StatusCode::BAD_REQUEST);
+
+        let body = res.into_body().collect().await.unwrap().to_bytes();
+        let body = String::from_utf8_lossy(&body[..]);
+        assert!(body.contains("Client not found."));
+    }
+}

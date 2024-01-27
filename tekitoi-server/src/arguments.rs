@@ -16,6 +16,6 @@ impl Arguments {
     }
 
     pub fn settings(&self) -> Settings {
-        Settings::build(&self.config)
+        Settings::build(self.config.clone())
     }
 }

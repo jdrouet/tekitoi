@@ -40,6 +40,7 @@ impl CachePool {
     }
 }
 
+#[derive(Debug)]
 pub enum CacheError {
     RedisPool(PoolError),
     RedisClient(RedisError),
