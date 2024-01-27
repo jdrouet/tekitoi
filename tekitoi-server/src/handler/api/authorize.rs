@@ -14,7 +14,6 @@ pub struct AuthorizationRequest {
 
 impl CachePayload for AuthorizationRequest {}
 
-// #[get("/api/authorize/{kind}/{state}")]
 pub async fn handler(
     Extension(clients): Extension<ClientManager>,
     Extension(cache): Extension<CachePool>,

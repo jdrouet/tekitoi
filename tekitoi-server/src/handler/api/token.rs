@@ -32,7 +32,6 @@ pub struct TokenRequestPayload {
 pub async fn handler(
     Extension(clients): Extension<ClientManager>,
     Extension(cache): Extension<CachePool>,
-    // Json(payload): Json<TokenRequestPayload>,
     Form(payload): Form<TokenRequestPayload>,
 ) -> Result<Json<StandardTokenResponse<EmptyExtraTokenFields, BasicTokenType>>, ApiError> {
     tracing::trace!("access-token requested with code={:?}", payload.code);

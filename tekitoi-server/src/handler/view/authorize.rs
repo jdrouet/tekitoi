@@ -33,7 +33,6 @@ struct AuthorizeTemplate<'a> {
     providers: Vec<&'static str>,
 }
 
-// #[get("/authorize")]
 pub async fn handler(
     Extension(clients): Extension<ClientManager>,
     Extension(cache): Extension<CachePool>,

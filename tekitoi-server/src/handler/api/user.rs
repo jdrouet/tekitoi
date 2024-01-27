@@ -6,7 +6,6 @@ use crate::{handler::api::token::ProviderAccessToken, service::client::ProviderU
 use axum::{Extension, Json};
 use oauth2::TokenResponse;
 
-// #[get("/api/user")]
 pub async fn handler(
     AccessToken(token): AccessToken,
     Extension(clients): Extension<ClientManager>,

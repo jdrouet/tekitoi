@@ -51,7 +51,6 @@ fn merge_url<S: serde::Serialize>(url: &url::Url, params: &S) -> Result<String, 
     Ok(format!("{}?{}", url, queries))
 }
 
-// #[get("/api/redirect/{kind}")]
 pub async fn handler(
     Extension(cache): Extension<CachePool>,
     Path(kind): Path<String>,
