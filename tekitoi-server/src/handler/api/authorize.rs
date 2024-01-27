@@ -1,18 +1,9 @@
 use super::error::ApiError;
-use super::prelude::CachePayload;
-use crate::handler::view::authorize::InitialAuthorizationRequest;
+use crate::entity::local::LocalAuthorizationRequest;
 use crate::service::cache::CachePool;
 use crate::service::client::ClientManager;
 use axum::{extract::Path, response::Redirect, Extension};
-use oauth2::{CsrfToken, PkceCodeChallenge, PkceCodeVerifier};
-
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
-pub struct AuthorizationRequest {
-    pub initial: InitialAuthorizationRequest,
-    pub pkce_verifier: PkceCodeVerifier,
-}
-
-impl CachePayload for AuthorizationRequest {}
+use oauth2::{CsrfToken, PkceCodeChallenge};
 
 pub async fn handler(
     Extension(clients): Extension<ClientManager>,
@@ -25,9 +16,12 @@ pub async fn handler(
         state
     );
     let mut cache_conn = cache.acquire().await?;
-    let initial_str: Option<String> = cache_conn.remove(state.as_str()).await?;
-    let initial_str = initial_str.ok_or_else(|| ApiError::bad_request("state not found"))?;
-    let initial = InitialAuthorizationRequest::from_query_string(&initial_str)?;
+    let initial = cache_conn
+        .remove_incoming_authorization_request(state.as_str())
+        .await?;
+    let Some(initial) = initial else {
+        return Err(ApiError::bad_request("state not found"));
+    };
     // build oauth client
     let client = clients
         .get(initial.client_id.as_str())
@@ -46,13 +40,12 @@ pub async fn handler(
         .set_pkce_challenge(pkce_challenge)
         .url();
 
-    let auth_request = AuthorizationRequest {
+    let auth_request = LocalAuthorizationRequest {
         initial,
         pkce_verifier,
     };
-    let auth_request = auth_request.to_query_string()?;
     cache_conn
-        .set_exp(csrf_token.secret(), auth_request.as_str(), 60i64 * 10)
+        .insert_local_authorization_request(csrf_token.secret(), auth_request)
         .await?;
 
     let auth_url = auth_url.to_string();
@@ -63,7 +56,7 @@ pub async fn handler(
 
 #[cfg(test)]
 mod tests {
-    use crate::handler::api::prelude::CachePayload;
+    use crate::entity::incoming::IncomingAuthorizationRequest;
     use crate::{settings::Settings, Server};
     use axum::body::Body;
     use axum::extract::Request;
@@ -102,7 +95,7 @@ mod tests {
     #[tokio::test]
     async fn valid_provider() {
         let server = Server::new(settings());
-        let initial = super::InitialAuthorizationRequest {
+        let initial = IncomingAuthorizationRequest {
             client_id: "main-client-id".into(),
             code_challenge: "code-challenge".into(),
             code_challenge_method: "S256".into(),
@@ -112,11 +105,7 @@ mod tests {
         let random_token = oauth2::CsrfToken::new_random();
         let mut cache_client = server.cache_pool.acquire().await.unwrap();
         cache_client
-            .set_exp(
-                random_token.secret(),
-                &initial.to_query_string().unwrap(),
-                60i64 * 10,
-            )
+            .insert_incoming_authorization_request(random_token.secret(), initial)
             .await
             .unwrap();
 
@@ -146,7 +135,7 @@ mod tests {
     #[tokio::test]
     async fn invalid_provider() {
         let server = Server::new(settings());
-        let initial = super::InitialAuthorizationRequest {
+        let initial = IncomingAuthorizationRequest {
             client_id: "main-client-id".into(),
             code_challenge: "code-challenge".into(),
             code_challenge_method: "S256".into(),
@@ -156,11 +145,7 @@ mod tests {
         let random_token = oauth2::CsrfToken::new_random();
         let mut cache_client = server.cache_pool.acquire().await.unwrap();
         cache_client
-            .set_exp(
-                random_token.secret(),
-                &initial.to_query_string().unwrap(),
-                60i64 * 10,
-            )
+            .insert_incoming_authorization_request(random_token.secret(), initial)
             .await
             .unwrap();
 

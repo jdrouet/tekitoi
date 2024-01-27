@@ -1,20 +1,10 @@
 use super::error::ApiError;
-use super::prelude::CachePayload;
-use crate::handler::api::authorize::AuthorizationRequest;
+use crate::entity::redirected::RedirectedAuthorizationRequest;
 use crate::service::cache::CachePool;
 use axum::extract::{Path, Query};
 use axum::response::Redirect;
 use axum::Extension;
 use serde_qs as qs;
-
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
-pub struct RedirectedAuthorizationRequest {
-    pub inner: AuthorizationRequest,
-    pub code: String,
-    pub kind: String,
-}
-
-impl CachePayload for RedirectedAuthorizationRequest {}
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 pub struct QueryParamsOk {
@@ -58,13 +48,14 @@ pub async fn handler(
 ) -> Result<Redirect, ApiError> {
     tracing::trace!("redirection requested");
     let mut cache_conn = cache.acquire().await?;
-    let auth_request = cache_conn.remove(query.state()).await?;
+    let auth_request = cache_conn
+        .remove_local_authorization_request(query.state())
+        .await?;
     let Some(auth_request) = auth_request else {
         return Err(ApiError::bad_request(
             "unable to find authorization request",
         ));
     };
-    let auth_request = AuthorizationRequest::from_query_string(&auth_request)?;
     let query = match query {
         QueryParams::Ok(value) => value,
         QueryParams::Error(value) => {
@@ -88,16 +79,11 @@ pub async fn handler(
     // TODO find what to store before having token request
     let redirect_request = RedirectedAuthorizationRequest {
         inner: auth_request,
-        code: query.code.clone(),
+        code: query.code,
         kind,
     };
-    let redirect_request = redirect_request.to_query_string()?;
     cache_conn
-        .set_exp(
-            code_challenge.as_str(),
-            redirect_request.as_str(),
-            60i64 * 10,
-        )
+        .insert_redirected_authorization_request(code_challenge.as_str(), redirect_request)
         .await?;
     tracing::debug!("redirecting to {:?}", url);
     //

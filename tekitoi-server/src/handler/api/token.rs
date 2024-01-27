@@ -1,6 +1,5 @@
 use super::error::ApiError;
-use super::prelude::CachePayload;
-use crate::handler::api::redirect::RedirectedAuthorizationRequest;
+use crate::entity::token::ProviderAccessToken;
 use crate::service::cache::CachePool;
 use crate::service::client::ClientManager;
 use axum::{Extension, Form, Json};
@@ -11,15 +10,6 @@ use oauth2::{
 };
 use url::Url;
 use uuid::Uuid;
-
-#[derive(Debug, serde::Deserialize, serde::Serialize)]
-pub struct ProviderAccessToken {
-    pub inner: StandardTokenResponse<EmptyExtraTokenFields, BasicTokenType>,
-    pub kind: String,
-    pub client_id: String,
-}
-
-impl CachePayload for ProviderAccessToken {}
 
 #[derive(Debug, serde::Deserialize)]
 pub struct TokenRequestPayload {
@@ -36,13 +26,14 @@ pub async fn handler(
 ) -> Result<Json<StandardTokenResponse<EmptyExtraTokenFields, BasicTokenType>>, ApiError> {
     tracing::trace!("access-token requested with code={:?}", payload.code);
     let mut cache_conn = cache.acquire().await?;
-    let auth_request = cache_conn.remove(payload.code.as_str()).await?;
+    let auth_request = cache_conn
+        .remove_redirected_authorization_request(payload.code.as_str())
+        .await?;
     let Some(auth_request) = auth_request else {
         return Err(ApiError::bad_request(
             "unable to find authorization request",
         ));
     };
-    let auth_request = RedirectedAuthorizationRequest::from_query_string(&auth_request)?;
     tracing::trace!("received authorization request");
     //
     let kind = auth_request.kind;
@@ -80,19 +71,14 @@ pub async fn handler(
         client_id,
         kind,
     };
-    let token_result_str = token_result.to_query_string()?;
     //
     let token_response = StandardTokenResponse::<EmptyExtraTokenFields, BasicTokenType>::new(
         AccessToken::new(Uuid::new_v4().to_string()),
         BasicTokenType::Bearer,
         EmptyExtraTokenFields {},
     );
-    // TODO limit the storage duration based on the token expiration
     cache_conn
-        .set(
-            token_response.access_token().secret(),
-            token_result_str.as_str(),
-        )
+        .insert_provider_access_token(token_response.access_token().secret(), token_result)
         .await?;
     //
     Ok(Json(token_response))

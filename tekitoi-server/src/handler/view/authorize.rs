@@ -1,11 +1,10 @@
 use super::error::ViewError;
-use crate::handler::api::prelude::CachePayload;
+use crate::entity::incoming::IncomingAuthorizationRequest;
 use crate::service::cache::CachePool;
 use crate::service::client::ClientManager;
 use axum::{extract::Query, response::Html, Extension};
 use oauth2::CsrfToken;
 use sailfish::TemplateOnce;
-use url::Url;
 
 // response_type=code
 // client_id=
@@ -15,16 +14,14 @@ use url::Url;
 // redirect_uri=
 
 // TODO add response_type with an enum
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
-pub struct InitialAuthorizationRequest {
-    pub client_id: String,
-    pub code_challenge: String,
-    pub code_challenge_method: String,
-    pub state: String,
-    pub redirect_uri: Url,
-}
-
-impl CachePayload for InitialAuthorizationRequest {}
+// #[derive(Debug, serde::Serialize, serde::Deserialize)]
+// pub struct InitialAuthorizationRequest {
+//     pub client_id: String,
+//     pub code_challenge: String,
+//     pub code_challenge_method: String,
+//     pub state: String,
+//     pub redirect_uri: Url,
+// }
 
 #[derive(TemplateOnce)]
 #[template(path = "authorize.html")]
@@ -36,7 +33,7 @@ struct AuthorizeTemplate<'a> {
 pub async fn handler(
     Extension(clients): Extension<ClientManager>,
     Extension(cache): Extension<CachePool>,
-    Query(params): Query<InitialAuthorizationRequest>,
+    Query(params): Query<IncomingAuthorizationRequest>,
 ) -> Result<Html<String>, ViewError> {
     tracing::trace!("authorization page requested");
     let client = clients.get(params.client_id.as_str()).map_err(|err| {
@@ -49,9 +46,8 @@ pub async fn handler(
         })?;
     let csrf_token = CsrfToken::new_random();
     let mut cache_conn = cache.acquire().await?;
-    let value = params.to_query_string()?;
     cache_conn
-        .set_exp(csrf_token.secret(), value.as_str(), 60i64 * 10)
+        .insert_incoming_authorization_request(csrf_token.secret(), params)
         .await?;
     let ctx = AuthorizeTemplate {
         state: csrf_token.secret(),

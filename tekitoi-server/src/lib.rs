@@ -5,6 +5,7 @@ use service::{cache::CachePool, client::ClientManager};
 use tokio::net::TcpListener;
 use tower_http::trace::TraceLayer;
 
+pub mod entity;
 mod handler;
 mod service;
 pub mod settings;

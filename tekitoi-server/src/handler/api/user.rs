@@ -1,8 +1,8 @@
 use super::error::ApiError;
-use super::prelude::{AccessToken, CachePayload};
+use super::prelude::AccessToken;
 use crate::service::cache::CachePool;
 use crate::service::client::ClientManager;
-use crate::{handler::api::token::ProviderAccessToken, service::client::ProviderUser};
+use crate::service::client::ProviderUser;
 use axum::{Extension, Json};
 use oauth2::TokenResponse;
 
@@ -13,13 +13,13 @@ pub async fn handler(
 ) -> Result<Json<ProviderUser>, ApiError> {
     tracing::trace!("user with token={:?}", token);
     let mut cache_conn = cache.acquire().await?;
-    let auth_request = cache_conn.get(token.as_str()).await?;
-    let Some(auth_request) = auth_request else {
+    let access_token = cache_conn
+        .find_provider_access_token(token.as_str())
+        .await?;
+    let Some(access_token) = access_token else {
         return Err(ApiError::bad_request("authentication request not found"));
     };
     tracing::debug!("access token found");
-    let access_token = ProviderAccessToken::from_query_string(&auth_request)?;
-    tracing::debug!("access token deserialized");
     //
     let user = clients
         .get(access_token.client_id.as_str())
