@@ -7,7 +7,7 @@ use uuid::Uuid;
 use crate::service::database::DatabaseTransaction;
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
-pub struct ProviderAuthorizationRequest {
+pub(crate) struct ProviderAuthorizationRequest {
     pub id: Uuid,
     pub application_authorization_request_id: Uuid,
     pub provider_id: Uuid,
@@ -28,7 +28,7 @@ impl FromRow<'_, SqliteRow> for ProviderAuthorizationRequest {
 }
 
 #[derive(Debug)]
-pub struct CreateProviderAuthorizationRequest<'a> {
+pub(crate) struct CreateProviderAuthorizationRequest<'a> {
     application_authorization_request_id: Uuid,
     provider_id: Uuid,
     csrf_token: &'a str,
@@ -36,7 +36,7 @@ pub struct CreateProviderAuthorizationRequest<'a> {
 }
 
 impl<'a> CreateProviderAuthorizationRequest<'a> {
-    pub fn new(
+    pub(crate) fn new(
         application_authorization_request_id: Uuid,
         provider_id: Uuid,
         csrf_token: &'a str,
@@ -74,7 +74,7 @@ returning id"#,
         .await
     }
 
-    pub async fn execute<'c>(
+    pub(crate) async fn execute<'c>(
         &self,
         executor: &mut DatabaseTransaction<'c>,
     ) -> Result<Uuid, sqlx::Error> {
@@ -84,12 +84,12 @@ returning id"#,
     }
 }
 
-pub struct FindProviderAuthorizationRequestByState<'a> {
+pub(crate) struct FindProviderAuthorizationRequestByState<'a> {
     state: &'a str,
 }
 
 impl<'a> FindProviderAuthorizationRequestByState<'a> {
-    pub fn new(state: &'a str) -> Self {
+    pub(crate) fn new(state: &'a str) -> Self {
         Self { state }
     }
 
@@ -110,7 +110,7 @@ limit 1"#,
         .await
     }
 
-    pub async fn execute<'c>(
+    pub(crate) async fn execute<'c>(
         &self,
         executor: &mut DatabaseTransaction<'c>,
     ) -> Result<Option<ProviderAuthorizationRequest>, sqlx::Error> {
@@ -120,12 +120,12 @@ limit 1"#,
     }
 }
 
-pub struct GetProviderAuthorizationRequestById {
+pub(crate) struct GetProviderAuthorizationRequestById {
     id: Uuid,
 }
 
 impl GetProviderAuthorizationRequestById {
-    pub fn new(id: Uuid) -> Self {
+    pub(crate) fn new(id: Uuid) -> Self {
         Self { id }
     }
 
@@ -144,7 +144,7 @@ limit 1"#,
         .await
     }
 
-    pub async fn execute<'c>(
+    pub(crate) async fn execute<'c>(
         &self,
         executor: &mut DatabaseTransaction<'c>,
     ) -> Result<ProviderAuthorizationRequest, sqlx::Error> {

@@ -15,7 +15,7 @@ use crate::service::database::DatabaseTransaction;
 
 // TODO add response_type with an enum
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
-pub struct ApplicationAuthorizationRequest {
+pub(crate) struct ApplicationAuthorizationRequest {
     pub id: Uuid,
     pub application_id: Uuid,
     pub code_challenge: String,
@@ -39,7 +39,7 @@ impl FromRow<'_, SqliteRow> for ApplicationAuthorizationRequest {
     }
 }
 
-pub struct CreateApplicationAuthorizationRequest<'a> {
+pub(crate) struct CreateApplicationAuthorizationRequest<'a> {
     pub application_id: Uuid,
     pub code_challenge: &'a str,
     pub code_challenge_method: &'a str,
@@ -48,7 +48,7 @@ pub struct CreateApplicationAuthorizationRequest<'a> {
 }
 
 impl<'a> CreateApplicationAuthorizationRequest<'a> {
-    pub fn new(
+    pub(crate) fn new(
         application_id: Uuid,
         code_challenge: &'a str,
         code_challenge_method: &'a str,
@@ -89,7 +89,7 @@ returning id"#,
         .await
     }
 
-    pub async fn execute<'c>(
+    pub(crate) async fn execute<'c>(
         &self,
         executor: &mut DatabaseTransaction<'c>,
     ) -> Result<Uuid, sqlx::Error> {
@@ -99,12 +99,12 @@ returning id"#,
     }
 }
 
-pub struct GetApplicationAuthorizationRequestById {
+pub(crate) struct GetApplicationAuthorizationRequestById {
     request_id: Uuid,
 }
 
 impl GetApplicationAuthorizationRequestById {
-    pub fn new(request_id: Uuid) -> Self {
+    pub(crate) fn new(request_id: Uuid) -> Self {
         Self { request_id }
     }
 
@@ -123,7 +123,7 @@ limit 1"#,
         .await
     }
 
-    pub async fn execute<'c>(
+    pub(crate) async fn execute<'c>(
         &self,
         executor: &mut DatabaseTransaction<'c>,
     ) -> Result<ApplicationAuthorizationRequest, sqlx::Error> {

@@ -7,7 +7,7 @@ use uuid::Uuid;
 
 use crate::service::database::DatabaseTransaction;
 
-pub struct Provider {
+pub(crate) struct Provider {
     pub id: Uuid,
     pub application_id: Uuid,
     pub name: String,
@@ -44,13 +44,6 @@ impl Provider {
 
         (auth_url, csrf_token, pkce_verifier)
     }
-
-    pub fn provider_client<'a>(
-        &self,
-        access_token: &'a str,
-    ) -> crate::service::client::ProviderClient<'a> {
-        self.config.provider_client(access_token)
-    }
 }
 
 impl FromRow<'_, SqliteRow> for Provider {
@@ -69,7 +62,7 @@ impl FromRow<'_, SqliteRow> for Provider {
     }
 }
 
-pub struct ListProviderByApplicationId {
+pub(crate) struct ListProviderByApplicationId {
     application_id: Uuid,
 }
 
@@ -92,7 +85,7 @@ where application_id = $1"#,
         .await
     }
 
-    pub async fn execute(
+    pub(crate) async fn execute(
         &self,
         executor: &mut DatabaseTransaction<'_>,
     ) -> Result<Vec<Provider>, sqlx::Error> {
@@ -102,7 +95,7 @@ where application_id = $1"#,
     }
 }
 
-pub struct FindProviderForApplicationAuthorizationRequest {
+pub(crate) struct FindProviderForApplicationAuthorizationRequest {
     application_authorization_request_id: Uuid,
     provider_id: Uuid,
 }
@@ -133,7 +126,7 @@ limit 1"#,
         .await
     }
 
-    pub async fn execute(
+    pub(crate) async fn execute(
         &self,
         executor: &mut DatabaseTransaction<'_>,
     ) -> Result<Option<Provider>, sqlx::Error> {
@@ -143,7 +136,7 @@ limit 1"#,
     }
 }
 
-pub struct GetProviderById {
+pub(crate) struct GetProviderById {
     id: Uuid,
 }
 
@@ -167,7 +160,7 @@ limit 1"#,
         .await
     }
 
-    pub async fn execute(
+    pub(crate) async fn execute(
         &self,
         executor: &mut DatabaseTransaction<'_>,
     ) -> Result<Provider, sqlx::Error> {
@@ -177,7 +170,7 @@ limit 1"#,
     }
 }
 
-pub struct GetProviderByAccessToken {
+pub(crate) struct GetProviderByAccessToken {
     token: Uuid,
 }
 
@@ -204,7 +197,7 @@ limit 1"#,
         .await
     }
 
-    pub async fn execute(
+    pub(crate) async fn execute(
         &self,
         executor: &mut DatabaseTransaction<'_>,
     ) -> Result<Provider, sqlx::Error> {
@@ -214,7 +207,7 @@ limit 1"#,
     }
 }
 
-pub struct UpsertProvider<'a> {
+pub(crate) struct UpsertProvider<'a> {
     application_id: Uuid,
     name: &'a str,
     label: Option<&'a str>,
@@ -223,7 +216,7 @@ pub struct UpsertProvider<'a> {
 }
 
 impl<'a> UpsertProvider<'a> {
-    pub fn new(
+    pub(crate) fn new(
         application_id: Uuid,
         name: &'a str,
         label: Option<&'a str>,
@@ -272,7 +265,7 @@ returning id"#,
         Ok(provider_id)
     }
 
-    pub async fn execute<'c>(
+    pub(crate) async fn execute<'c>(
         &self,
         executor: &mut DatabaseTransaction<'c>,
     ) -> Result<Uuid, sqlx::Error> {
@@ -282,7 +275,7 @@ returning id"#,
     }
 }
 
-pub struct DeleteOtherProviders<'a> {
+pub(crate) struct DeleteOtherProviders<'a> {
     application_id: Uuid,
     names: &'a [&'a String],
 }
@@ -316,7 +309,7 @@ where application_id = $2 and name not in (select value from json_each($3))"#,
         Ok(())
     }
 
-    pub async fn execute<'c>(
+    pub(crate) async fn execute<'c>(
         &self,
         executor: &mut DatabaseTransaction<'c>,
     ) -> Result<(), sqlx::Error> {

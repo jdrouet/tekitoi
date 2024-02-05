@@ -5,7 +5,7 @@ use uuid::Uuid;
 
 use super::error::ApiError;
 
-pub struct AccessToken(pub Uuid);
+pub(crate) struct AccessToken(pub Uuid);
 
 #[axum::async_trait]
 impl<S> axum::extract::FromRequestParts<S> for AccessToken

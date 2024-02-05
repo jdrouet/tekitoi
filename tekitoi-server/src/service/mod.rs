@@ -4,7 +4,7 @@ pub mod client;
 pub mod database;
 
 #[derive(Clone, Debug)]
-pub struct BaseUrl(Arc<String>);
+pub(crate) struct BaseUrl(Arc<String>);
 
 impl From<String> for BaseUrl {
     fn from(inner: String) -> Self {

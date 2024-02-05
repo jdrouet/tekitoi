@@ -7,7 +7,7 @@ use uuid::Uuid;
 use crate::service::database::DatabaseTransaction;
 
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
-pub struct ProviderAccessToken {
+pub(crate) struct ProviderAccessToken {
     pub id: Uuid,
     pub redirect_request_id: Uuid,
     pub token: String,
@@ -23,14 +23,18 @@ impl FromRow<'_, SqliteRow> for ProviderAccessToken {
     }
 }
 
-pub struct CreateAccessToken<'a> {
+pub(crate) struct CreateAccessToken<'a> {
     redirect_request_id: Uuid,
     token: &'a str,
     duration: Option<Duration>,
 }
 
 impl<'a> CreateAccessToken<'a> {
-    pub fn new(redirect_request_id: Uuid, token: &'a str, duration: Option<Duration>) -> Self {
+    pub(crate) fn new(
+        redirect_request_id: Uuid,
+        token: &'a str,
+        duration: Option<Duration>,
+    ) -> Self {
         Self {
             redirect_request_id,
             token,
@@ -60,7 +64,7 @@ returning id"#,
         .await
     }
 
-    pub async fn execute<'c>(
+    pub(crate) async fn execute<'c>(
         &self,
         executor: &mut DatabaseTransaction<'c>,
     ) -> Result<Uuid, sqlx::Error> {
@@ -70,12 +74,12 @@ returning id"#,
     }
 }
 
-pub struct FindAccessToken {
+pub(crate) struct FindAccessToken {
     token: Uuid,
 }
 
 impl FindAccessToken {
-    pub fn new(token: Uuid) -> Self {
+    pub(crate) fn new(token: Uuid) -> Self {
         Self { token }
     }
 
@@ -94,7 +98,7 @@ limit 1"#,
         .await
     }
 
-    pub async fn execute<'c>(
+    pub(crate) async fn execute<'c>(
         &self,
         executor: &mut DatabaseTransaction<'c>,
     ) -> Result<Option<ProviderAccessToken>, sqlx::Error> {

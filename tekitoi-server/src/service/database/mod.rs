@@ -2,7 +2,7 @@ pub mod sqlite;
 
 #[derive(Debug, serde::Deserialize)]
 #[serde(tag = "type", rename_all = "kebab-case")]
-pub enum DatabaseConfig {
+pub(crate) enum DatabaseConfig {
     Sqlite(sqlite::Config),
 }
 
@@ -13,7 +13,7 @@ impl Default for DatabaseConfig {
 }
 
 impl DatabaseConfig {
-    pub async fn build(&self) -> Result<DatabasePool, Box<dyn std::error::Error>> {
+    pub(crate) async fn build(&self) -> Result<DatabasePool, Box<dyn std::error::Error>> {
         Ok(match self {
             Self::Sqlite(inner) => inner.build().await.map(DatabasePool::Sqlite)?,
         })
@@ -21,12 +21,12 @@ impl DatabaseConfig {
 }
 
 #[derive(Debug, Clone)]
-pub enum DatabasePool {
+pub(crate) enum DatabasePool {
     Sqlite(sqlx::SqlitePool),
 }
 
 impl DatabasePool {
-    pub async fn begin<'c>(&self) -> Result<DatabaseTransaction<'c>, sqlx::Error> {
+    pub(crate) async fn begin<'c>(&self) -> Result<DatabaseTransaction<'c>, sqlx::Error> {
         match self {
             Self::Sqlite(inner) => inner.begin().await.map(DatabaseTransaction::Sqlite),
         }
@@ -40,12 +40,12 @@ impl DatabasePool {
 }
 
 #[derive(Debug)]
-pub enum DatabaseTransaction<'c> {
+pub(crate) enum DatabaseTransaction<'c> {
     Sqlite(sqlx::Transaction<'c, sqlx::Sqlite>),
 }
 
 impl<'c> DatabaseTransaction<'c> {
-    pub async fn commit(self) -> Result<(), sqlx::Error> {
+    pub(crate) async fn commit(self) -> Result<(), sqlx::Error> {
         match self {
             Self::Sqlite(inner) => inner.commit().await,
         }

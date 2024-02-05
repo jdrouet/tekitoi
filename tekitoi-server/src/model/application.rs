@@ -6,7 +6,7 @@ use uuid::Uuid;
 
 use crate::service::database::DatabaseTransaction;
 
-pub struct Application {
+pub(crate) struct Application {
     pub id: Uuid,
     pub client_id: ClientId,
     pub client_secrets: Vec<String>,
@@ -16,11 +16,11 @@ pub struct Application {
 }
 
 impl Application {
-    pub fn label_or_name(&self) -> &str {
+    pub(crate) fn label_or_name(&self) -> &str {
         self.label.as_deref().unwrap_or(self.name.as_str())
     }
 
-    pub fn check_redirect_uri(&self, url: &Url) -> Result<(), &'static str> {
+    pub(crate) fn check_redirect_uri(&self, url: &Url) -> Result<(), &'static str> {
         if &self.redirect_uri == url {
             Ok(())
         } else {
@@ -52,12 +52,12 @@ impl FromRow<'_, SqliteRow> for Application {
     }
 }
 
-pub struct FindApplicationByClientId<'a> {
+pub(crate) struct FindApplicationByClientId<'a> {
     client_id: &'a str,
 }
 
 impl<'a> FindApplicationByClientId<'a> {
-    pub fn new(client_id: &'a str) -> Self {
+    pub(crate) fn new(client_id: &'a str) -> Self {
         Self { client_id }
     }
 }
@@ -78,7 +78,7 @@ limit 1"#,
         .await
     }
 
-    pub async fn execute<'c>(
+    pub(crate) async fn execute<'c>(
         &self,
         executor: &mut DatabaseTransaction<'c>,
     ) -> Result<Option<Application>, sqlx::Error> {
@@ -88,7 +88,7 @@ limit 1"#,
     }
 }
 
-pub struct UpsertApplication<'a> {
+pub(crate) struct UpsertApplication<'a> {
     name: &'a str,
     label: Option<&'a str>,
     client_id: &'a str,
@@ -97,7 +97,7 @@ pub struct UpsertApplication<'a> {
 }
 
 impl<'a> UpsertApplication<'a> {
-    pub fn new(
+    pub(crate) fn new(
         name: &'a str,
         label: Option<&'a str>,
         client_id: &'a str,
@@ -146,7 +146,7 @@ returning id"#,
         .await
     }
 
-    pub async fn execute<'c>(
+    pub(crate) async fn execute<'c>(
         &self,
         executor: &mut DatabaseTransaction<'c>,
     ) -> Result<Uuid, sqlx::Error> {
@@ -156,12 +156,12 @@ returning id"#,
     }
 }
 
-pub struct DeleteOtherApplications<'a> {
+pub(crate) struct DeleteOtherApplications<'a> {
     names: &'a [&'a String],
 }
 
 impl<'a> DeleteOtherApplications<'a> {
-    pub fn new(names: &'a [&'a String]) -> Self {
+    pub(crate) fn new(names: &'a [&'a String]) -> Self {
         Self { names }
     }
 
@@ -185,7 +185,7 @@ where name not in (select $2)"#,
         Ok(())
     }
 
-    pub async fn execute<'c>(
+    pub(crate) async fn execute<'c>(
         &self,
         executor: &mut DatabaseTransaction<'c>,
     ) -> Result<(), sqlx::Error> {

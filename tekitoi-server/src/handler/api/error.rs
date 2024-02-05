@@ -5,26 +5,27 @@ use axum::{
 };
 
 #[derive(Debug)]
-pub struct ApiError {
+pub(crate) struct ApiError {
     code: StatusCode,
     message: String,
 }
 
 impl ApiError {
-    pub fn bad_request<T: ToString>(value: T) -> Self {
+    pub(crate) fn bad_request<T: ToString>(value: T) -> Self {
         Self {
             code: StatusCode::BAD_REQUEST,
             message: value.to_string(),
         }
     }
 
-    pub fn internal_server<T: ToString>(value: T) -> Self {
+    pub(crate) fn internal_server<T: ToString>(value: T) -> Self {
         Self {
             code: StatusCode::INTERNAL_SERVER_ERROR,
             message: value.to_string(),
         }
     }
-    pub fn unauthorized<T: ToString>(value: T) -> Self {
+
+    pub(crate) fn unauthorized<T: ToString>(value: T) -> Self {
         Self {
             code: StatusCode::UNAUTHORIZED,
             message: value.to_string(),

@@ -34,7 +34,7 @@ fn is_json_content(headers: &HeaderMap) -> bool {
 }
 
 #[derive(Debug)]
-pub enum AccessTokenRequestPayloadParseError {
+pub(crate) enum AccessTokenRequestPayloadParseError {
     Json(JsonRejection),
     Form(FormRejection),
 }
@@ -49,7 +49,7 @@ impl IntoResponse for AccessTokenRequestPayloadParseError {
 }
 
 #[derive(Debug, serde::Deserialize)]
-pub struct AccessTokenRequestPayload {
+pub(crate) struct AccessTokenRequestPayload {
     pub code: String,
     pub code_verifier: String,
     #[allow(dead_code)]
@@ -79,7 +79,7 @@ where
     }
 }
 
-pub async fn handler(
+pub(crate) async fn handler(
     Extension(base_url): Extension<BaseUrl>,
     Extension(pool): Extension<DatabasePool>,
     payload: AccessTokenRequestPayload,

@@ -6,7 +6,7 @@ use tower_http::trace::TraceLayer;
 
 mod entity;
 mod handler;
-pub mod model;
+mod model;
 mod service;
 pub mod settings;
 

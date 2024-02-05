@@ -6,7 +6,7 @@ use crate::service::BaseUrl;
 use axum::{extract::Path, response::Redirect, Extension};
 use uuid::Uuid;
 
-pub async fn handler(
+pub(crate) async fn handler(
     Extension(base_url): Extension<BaseUrl>,
     Extension(pool): Extension<DatabasePool>,
     Path((request_id, provider_id)): Path<(Uuid, Uuid)>,

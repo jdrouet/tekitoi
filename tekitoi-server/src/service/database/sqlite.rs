@@ -3,8 +3,8 @@ use std::str::FromStr;
 use sqlx::{sqlite::SqliteConnectOptions, ConnectOptions};
 
 #[derive(Debug, serde::Deserialize)]
-pub struct Config {
-    pub url: String,
+pub(crate) struct Config {
+    url: String,
 }
 
 impl Default for Config {
@@ -16,11 +16,11 @@ impl Default for Config {
 }
 
 impl Config {
-    pub fn default_url() -> String {
+    pub(crate) fn default_url() -> String {
         String::from("sqlite::memory:")
     }
 
-    pub async fn build(&self) -> Result<sqlx::sqlite::SqlitePool, sqlx::Error> {
+    pub(crate) async fn build(&self) -> Result<sqlx::sqlite::SqlitePool, sqlx::Error> {
         let opts = SqliteConnectOptions::from_str(&self.url)?;
         let opts = opts.create_if_missing(true);
         let opts = opts.disable_statement_logging();

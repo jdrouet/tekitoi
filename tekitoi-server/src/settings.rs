@@ -69,14 +69,14 @@ impl Settings {
         SocketAddr::from((self.host, self.port))
     }
 
-    pub async fn build_database_pool(&self) -> crate::service::database::DatabasePool {
+    pub(crate) async fn build_database_pool(&self) -> crate::service::database::DatabasePool {
         self.database
             .build()
             .await
             .expect("couldn't build database pool")
     }
 
-    pub fn base_url(&self) -> BaseUrl {
+    pub(crate) fn base_url(&self) -> BaseUrl {
         BaseUrl::from(
             self.base_url
                 .clone()
@@ -84,7 +84,7 @@ impl Settings {
         )
     }
 
-    pub fn static_path(&self) -> &PathBuf {
+    pub(crate) fn static_path(&self) -> &PathBuf {
         &self.static_path
     }
 

@@ -44,7 +44,7 @@ impl ApplicationCollectionConfig {
         Ok(())
     }
 
-    pub async fn synchronize(&self, pool: &DatabasePool) -> Result<(), sqlx::Error> {
+    pub(crate) async fn synchronize(&self, pool: &DatabasePool) -> Result<(), sqlx::Error> {
         tracing::debug!("synchronize application collection");
         let mut tx = pool.begin().await?;
 
@@ -144,7 +144,7 @@ pub struct ProviderConfig {
 
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
 #[serde(tag = "type", rename_all = "kebab-case")]
-pub enum ProviderInnerConfig {
+pub(crate) enum ProviderInnerConfig {
     Github(GithubProviderConfig),
     Gitlab(GitlabProviderConfig),
     Google(GoogleProviderConfig),
@@ -170,12 +170,12 @@ impl ProviderInnerConfig {
         )
     }
 
-    pub fn provider_client<'a>(&self, access_token: &'a str) -> ProviderClient<'a> {
+    pub(crate) fn provider_client(self, access_token: String) -> Box<dyn ProviderClient> {
         match self {
-            Self::Oauth(inner) => inner.provider_client(access_token).into(),
-            Self::Github(inner) => inner.provider_client(access_token).into(),
-            Self::Gitlab(inner) => inner.provider_client(access_token).into(),
-            Self::Google(inner) => inner.provider_client(access_token).into(),
+            Self::Oauth(inner) => inner.provider_client(access_token),
+            Self::Github(inner) => inner.provider_client(access_token),
+            Self::Gitlab(inner) => inner.provider_client(access_token),
+            Self::Google(inner) => inner.provider_client(access_token),
         }
     }
 
@@ -231,47 +231,9 @@ impl ProviderConfig {
     }
 }
 
-#[derive(Debug)]
-pub enum ProviderClient<'a> {
-    Github(github::GithubProviderClient<'a>),
-    Gitlab(gitlab::GitlabProviderClient<'a>),
-    Google(google::GoogleProviderClient<'a>),
-    Oauth(oauth::OauthProviderClient<'a>),
-}
-
-impl<'a> From<github::GithubProviderClient<'a>> for ProviderClient<'a> {
-    fn from(value: github::GithubProviderClient<'a>) -> Self {
-        Self::Github(value)
-    }
-}
-
-impl<'a> From<gitlab::GitlabProviderClient<'a>> for ProviderClient<'a> {
-    fn from(value: gitlab::GitlabProviderClient<'a>) -> Self {
-        Self::Gitlab(value)
-    }
-}
-
-impl<'a> From<google::GoogleProviderClient<'a>> for ProviderClient<'a> {
-    fn from(value: google::GoogleProviderClient<'a>) -> Self {
-        Self::Google(value)
-    }
-}
-
-impl<'a> From<oauth::OauthProviderClient<'a>> for ProviderClient<'a> {
-    fn from(value: oauth::OauthProviderClient<'a>) -> Self {
-        Self::Oauth(value)
-    }
-}
-
-impl<'a> ProviderClient<'a> {
-    pub async fn fetch_user(&self) -> Result<ProviderUser, String> {
-        match self {
-            Self::Github(client) => client.fetch_user().await.map(Into::into),
-            Self::Gitlab(client) => client.fetch_user().await.map(Into::into),
-            Self::Google(client) => client.fetch_user().await.map(Into::into),
-            Self::Oauth(client) => client.fetch_user().await.map(Into::into),
-        }
-    }
+#[axum::async_trait]
+pub(crate) trait ProviderClient: std::fmt::Debug + Send {
+    async fn fetch_user(&self) -> Result<ProviderUser, String>;
 }
 
 #[derive(Debug, serde::Serialize)]

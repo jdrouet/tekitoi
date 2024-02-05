@@ -1,7 +1,7 @@
 use url::Url;
 
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
-pub struct GitlabProviderConfig {
+pub(crate) struct GitlabProviderConfig {
     pub client_id: String,
     pub client_secret: String,
     #[serde(default)]
@@ -29,30 +29,24 @@ impl GitlabProviderConfig {
         Url::parse("https://gitlab.com").expect("couldn't parse gitlab default base api url")
     }
 
-    pub fn provider_client<'a>(&self, access_token: &'a str) -> GitlabProviderClient<'a> {
-        GitlabProviderClient {
+    pub(crate) fn provider_client(&self, access_token: String) -> Box<dyn super::ProviderClient> {
+        Box::new(GitlabProviderClient {
             access_token,
             base_api_url: self.base_api_url.clone(),
-        }
+        })
     }
 }
 
 #[derive(Debug)]
-pub struct GitlabProviderClient<'a> {
-    access_token: &'a str,
+pub(crate) struct GitlabProviderClient {
+    access_token: String,
     base_api_url: Url,
 }
 
-impl<'a> GitlabProviderClient<'a> {
-    pub fn new(access_token: &'a str, base_api_url: Url) -> Self {
-        Self {
-            access_token,
-            base_api_url,
-        }
-    }
-
+#[axum::async_trait]
+impl super::ProviderClient for GitlabProviderClient {
     #[tracing::instrument(level = "debug", skip_all)]
-    pub async fn fetch_user(&self) -> Result<GitlabUser, String> {
+    async fn fetch_user(&self) -> Result<super::ProviderUser, String> {
         let url = format!("{}/api/v4/user", self.base_api_url);
         let response = reqwest::Client::new()
             .get(url)
@@ -65,7 +59,11 @@ impl<'a> GitlabProviderClient<'a> {
             .map_err(|err| err.to_string())?;
         tracing::debug!("received response {:?}", response.status());
         if response.status().is_success() {
-            response.json().await.map_err(|err| err.to_string())
+            response
+                .json()
+                .await
+                .map(super::ProviderUser::Gitlab)
+                .map_err(|err| err.to_string())
         } else {
             let error = response.text().await.map_err(|err| err.to_string())?;
             Err(error)
@@ -74,7 +72,7 @@ impl<'a> GitlabProviderClient<'a> {
 }
 
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
-pub struct GitlabUser {
+pub(crate) struct GitlabUser {
     pub id: u64,
     pub username: Option<String>,
     pub name: Option<String>,

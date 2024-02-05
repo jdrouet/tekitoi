@@ -3,7 +3,7 @@ use url::Url;
 const HEADER_USER_AGENT: &str = concat!(env!("CARGO_PKG_NAME"), "-", env!("CARGO_PKG_VERSION"));
 
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
-pub struct GoogleProviderConfig {
+pub(crate) struct GoogleProviderConfig {
     pub client_id: String,
     pub client_secret: String,
     #[serde(default)]
@@ -32,30 +32,24 @@ impl GoogleProviderConfig {
             .expect("couldn't parse google default base api url")
     }
 
-    pub fn provider_client<'a>(&self, access_token: &'a str) -> GoogleProviderClient<'a> {
-        GoogleProviderClient {
+    pub(crate) fn provider_client(&self, access_token: String) -> Box<dyn super::ProviderClient> {
+        Box::new(GoogleProviderClient {
             access_token,
             base_api_url: self.base_api_url.clone(),
-        }
+        })
     }
 }
 
 #[derive(Debug)]
-pub struct GoogleProviderClient<'a> {
-    access_token: &'a str,
+pub(crate) struct GoogleProviderClient {
+    access_token: String,
     base_api_url: Url,
 }
 
-impl<'a> GoogleProviderClient<'a> {
-    pub fn new(access_token: &'a str, base_api_url: Url) -> Self {
-        Self {
-            access_token,
-            base_api_url,
-        }
-    }
-
+#[axum::async_trait]
+impl super::ProviderClient for GoogleProviderClient {
     #[tracing::instrument(level = "debug", skip_all)]
-    pub async fn fetch_user(&self) -> Result<GoogleUser, String> {
+    async fn fetch_user(&self) -> Result<super::ProviderUser, String> {
         let url = format!("{}/userinfo", self.base_api_url);
         tracing::debug!("fetching url {:?}", url);
         let response = reqwest::Client::new()
@@ -70,7 +64,11 @@ impl<'a> GoogleProviderClient<'a> {
             .map_err(|err| err.to_string())?;
         tracing::debug!("received response {:?}", response.status());
         if response.status().is_success() {
-            response.json().await.map_err(|err| err.to_string())
+            response
+                .json()
+                .await
+                .map(super::ProviderUser::Google)
+                .map_err(|err| err.to_string())
         } else {
             let error = response.text().await.map_err(|err| err.to_string())?;
             Err(error)
@@ -79,7 +77,7 @@ impl<'a> GoogleProviderClient<'a> {
 }
 
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
-pub struct GoogleUser {
+pub(crate) struct GoogleUser {
     pub id: String,
     pub email: Option<String>,
     pub verified_email: bool,

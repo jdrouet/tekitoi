@@ -7,7 +7,7 @@ use uuid::Uuid;
 use crate::service::database::DatabaseTransaction;
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
-pub struct RedirectedRequest {
+pub(crate) struct RedirectedRequest {
     pub id: Uuid,
     pub provider_authorization_request_id: Uuid,
     pub code: String,
@@ -23,13 +23,13 @@ impl FromRow<'_, SqliteRow> for RedirectedRequest {
     }
 }
 
-pub struct CreateRedirectedRequest<'a> {
+pub(crate) struct CreateRedirectedRequest<'a> {
     provider_authorization_request_id: Uuid,
     code: &'a str,
 }
 
 impl<'a> CreateRedirectedRequest<'a> {
-    pub fn new(provider_authorization_request_id: Uuid, code: &'a str) -> Self {
+    pub(crate) fn new(provider_authorization_request_id: Uuid, code: &'a str) -> Self {
         Self {
             provider_authorization_request_id,
             code,
@@ -58,7 +58,7 @@ returning id"#,
         .await
     }
 
-    pub async fn execute<'c>(
+    pub(crate) async fn execute<'c>(
         &self,
         executor: &mut DatabaseTransaction<'c>,
     ) -> Result<Uuid, sqlx::Error> {
@@ -68,12 +68,12 @@ returning id"#,
     }
 }
 
-pub struct FindRedirectedRequestByCode<'a> {
+pub(crate) struct FindRedirectedRequestByCode<'a> {
     code: &'a str,
 }
 
 impl<'a> FindRedirectedRequestByCode<'a> {
-    pub fn new(code: &'a str) -> Self {
+    pub(crate) fn new(code: &'a str) -> Self {
         Self { code }
     }
 
@@ -94,7 +94,7 @@ limit 1"#,
         .await
     }
 
-    pub async fn execute<'c>(
+    pub(crate) async fn execute<'c>(
         &self,
         executor: &mut DatabaseTransaction<'c>,
     ) -> Result<Option<RedirectedRequest>, sqlx::Error> {

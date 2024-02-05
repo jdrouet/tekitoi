@@ -9,13 +9,13 @@ use axum::Extension;
 use serde_qs as qs;
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
-pub struct QueryParamsOk {
+pub(crate) struct QueryParamsOk {
     pub code: String,
     pub state: String,
 }
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
-pub struct QueryParamsError {
+pub(crate) struct QueryParamsError {
     pub error: String,
     pub error_description: String,
     pub error_uri: String,
@@ -24,13 +24,13 @@ pub struct QueryParamsError {
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
-pub enum QueryParams {
+pub(crate) enum QueryParams {
     Ok(QueryParamsOk),
     Error(QueryParamsError),
 }
 
 impl QueryParams {
-    pub fn state(&self) -> &str {
+    fn state(&self) -> &str {
         match self {
             Self::Ok(value) => value.state.as_str(),
             Self::Error(value) => value.state.as_str(),
@@ -43,7 +43,7 @@ fn merge_url<S: serde::Serialize>(url: &url::Url, params: &S) -> Result<String, 
     Ok(format!("{}?{}", url, queries))
 }
 
-pub async fn handler(
+pub(crate) async fn handler(
     Extension(pool): Extension<DatabasePool>,
     Query(query): Query<QueryParams>,
 ) -> Result<Redirect, ApiError> {

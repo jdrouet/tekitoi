@@ -5,7 +5,8 @@ use crate::service::database::DatabasePool;
 use crate::{model::token::FindAccessToken, service::client::ProviderUser};
 use axum::{Extension, Json};
 
-pub async fn handler(
+#[axum::debug_handler]
+pub(crate) async fn handler(
     Extension(pool): Extension<DatabasePool>,
     AccessToken(token): AccessToken,
 ) -> Result<Json<ProviderUser>, ApiError> {
@@ -23,7 +24,8 @@ pub async fn handler(
         .await?;
 
     let user = provider
-        .provider_client(access_token.token.as_str())
+        .config
+        .provider_client(access_token.token)
         .fetch_user()
         .await
         .map_err(ApiError::internal_server)?;
