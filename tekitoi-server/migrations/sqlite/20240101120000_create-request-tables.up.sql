@@ -1,4 +1,4 @@
-create table initial_requests (
+create table application_authorization_requests (
     id text not null primary key,
     application_id text not null
         references applications(id) on delete cascade,
@@ -13,11 +13,11 @@ create table initial_requests (
     deleted_at integer
 );
 
-create table local_requests (
+create table provider_authorization_requests (
     id text not null primary key,
 
-    initial_request_id text not null
-        references initial_requests(id) on delete cascade,
+    application_authorization_request_id text not null
+        references application_authorization_requests(id) on delete cascade,
     provider_id text not null
         references providers(id) on delete cascade,
 
@@ -28,14 +28,14 @@ create table local_requests (
     expired_at integer not null,
     deleted_at integer,
 
-    unique (initial_request_id, csrf_token)
+    unique (application_authorization_request_id, csrf_token)
 );
 
 create table redirect_requests (
     id text not null primary key,
 
-    local_request_id text not null
-        references local_requests(id) on delete cascade,
+    provider_authorization_request_id text not null
+        references provider_authorization_requests(id) on delete cascade,
 
     code text not null,
 

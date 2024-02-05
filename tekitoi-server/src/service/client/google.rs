@@ -2,8 +2,12 @@ use url::Url;
 
 const HEADER_USER_AGENT: &str = concat!(env!("CARGO_PKG_NAME"), "-", env!("CARGO_PKG_VERSION"));
 
-#[derive(Debug, serde::Deserialize)]
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
 pub struct GoogleProviderConfig {
+    pub client_id: String,
+    pub client_secret: String,
+    #[serde(default)]
+    pub scopes: Vec<String>,
     #[serde(default = "GoogleProviderConfig::default_authorization_url")]
     pub authorization_url: Url,
     #[serde(default = "GoogleProviderConfig::default_token_url")]
@@ -26,6 +30,13 @@ impl GoogleProviderConfig {
     fn default_base_api_url() -> Url {
         Url::parse("https://www.googleapis.com/oauth2/v1")
             .expect("couldn't parse google default base api url")
+    }
+
+    pub fn provider_client<'a>(&self, access_token: &'a str) -> GoogleProviderClient<'a> {
+        GoogleProviderClient {
+            access_token,
+            base_api_url: self.base_api_url.clone(),
+        }
     }
 }
 

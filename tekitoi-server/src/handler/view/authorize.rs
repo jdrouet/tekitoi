@@ -1,27 +1,23 @@
 use super::error::ViewError;
+use crate::entity::{AuthorizationState, RedirectUri};
 use crate::model::provider::{ListProviderByApplicationId, Provider};
-use crate::model::{application::FindApplicationByClientId, incoming::CreateIncomingRequest};
+use crate::model::{
+    application::FindApplicationByClientId,
+    application_authorization_request::CreateApplicationAuthorizationRequest,
+};
 use crate::service::database::DatabasePool;
 use axum::{extract::Query, response::Html, Extension};
+use oauth2::{ClientId, PkceCodeChallenge};
 use sailfish::TemplateOnce;
-use url::Url;
 use uuid::Uuid;
 
-// response_type=code
-// client_id=
-// code_challenge=
-// code_challenge_method=
-// state=
-// redirect_uri=
-
-// TODO add response_type with an enum
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
-pub struct QueryParams {
-    pub client_id: String,
-    pub code_challenge: String,
-    pub code_challenge_method: String,
-    pub state: String,
-    pub redirect_uri: Url,
+#[derive(Debug, serde::Deserialize)]
+pub(crate) struct AuthorizationRequest {
+    client_id: ClientId,
+    #[serde(flatten)]
+    code_challenge: PkceCodeChallenge,
+    state: AuthorizationState,
+    redirect_uri: RedirectUri,
 }
 
 #[derive(TemplateOnce)]
@@ -31,9 +27,9 @@ struct AuthorizeTemplate {
     providers: Vec<Provider>,
 }
 
-pub async fn handler(
+pub(crate) async fn handler(
     Extension(db_pool): Extension<DatabasePool>,
-    Query(params): Query<QueryParams>,
+    Query(params): Query<AuthorizationRequest>,
 ) -> Result<Html<String>, ViewError> {
     let mut tx = db_pool.begin().await?;
 
@@ -48,17 +44,17 @@ pub async fn handler(
     };
 
     application
-        .check_redirect_uri(&params.redirect_uri)
+        .check_redirect_uri(params.redirect_uri.as_ref())
         .map_err(|err| {
             ViewError::bad_request("Invalid authorization request".into(), err.into())
         })?;
 
-    let request_id = CreateIncomingRequest::new(
+    let request_id = CreateApplicationAuthorizationRequest::new(
         application.id,
         params.code_challenge.as_str(),
-        params.code_challenge_method.as_str(),
-        params.state.as_str(),
-        &params.redirect_uri,
+        params.code_challenge.method().as_str(),
+        params.state.as_ref(),
+        params.redirect_uri.as_ref(),
     )
     .execute(&mut tx)
     .await?;
@@ -117,7 +113,10 @@ mod tests {
     }
 
     #[tokio::test]
+    #[serial_test::serial(database)]
     async fn simple() {
+        crate::init_logger();
+
         let auth_uri = create_auth_uri("main-client-id");
 
         let app = Server::new(settings()).await.router();
@@ -133,18 +132,22 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(res.status(), StatusCode::OK);
-
+        let status = res.status();
         let body = res.into_body().collect().await.unwrap().to_bytes();
         let body = String::from_utf8_lossy(&body[..]);
+
+        assert_eq!(status, StatusCode::OK);
         assert!(body.contains("Connect with github"));
 
-        let re = regex::Regex::new("\"/api/authorize/github/(.*)\"").unwrap();
+        let re = regex::Regex::new("\"/api/authorize/(.*)/(.*)\"").unwrap();
         assert!(re.find(&body).is_some());
     }
 
     #[tokio::test]
+    #[serial_test::serial(database)]
     async fn client_not_found() {
+        crate::init_logger();
+
         let auth_uri = create_auth_uri("unknown-client-id");
 
         let app = Server::new(settings()).await.router();
@@ -160,10 +163,13 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(res.status(), StatusCode::BAD_REQUEST);
-
+        let status = res.status();
         let body = res.into_body().collect().await.unwrap().to_bytes();
         let body = String::from_utf8_lossy(&body[..]);
-        assert!(body.contains("Client not found."));
+
+        println!("body: {body}");
+
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert!(body.contains("Application not found"));
     }
 }

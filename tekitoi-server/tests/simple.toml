@@ -1,8 +1,9 @@
-[clients.main]
+[applications.main]
 client_id = "main-client-id"
 client_secrets = ["main-client-secret"]
 redirect_uri = "http://localhost:4444/api/redirect"
 
-[clients.main.providers.github]
+[applications.main.providers.github]
+type = "github"
 client_id = "github-client-id"
 client_secret = "github-client-secret"

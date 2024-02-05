@@ -1,53 +1,18 @@
-use std::str::FromStr;
-
 use chrono::Utc;
-use sqlx::{sqlite::SqliteRow, FromRow, Row, Sqlite, Transaction};
+use oauth2::{CsrfToken, PkceCodeChallenge, PkceCodeVerifier};
+use sqlx::sqlite::SqliteRow;
+use sqlx::{FromRow, Row, Sqlite, Transaction};
 use url::Url;
 use uuid::Uuid;
 
 use crate::service::database::DatabaseTransaction;
 
-#[derive(Clone, Copy, Debug)]
-pub enum ProviderKind {
-    Github,
-    Gitlab,
-    Google,
-}
-
-impl AsRef<str> for ProviderKind {
-    fn as_ref(&self) -> &str {
-        match self {
-            Self::Github => "github",
-            Self::Gitlab => "gitlab",
-            Self::Google => "google",
-        }
-    }
-}
-
-impl FromStr for ProviderKind {
-    type Err = String;
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
-            "github" => Ok(Self::Github),
-            "gitlab" => Ok(Self::Gitlab),
-            "google" => Ok(Self::Google),
-            other => Err(format!("unexpected provider kind {other:?}")),
-        }
-    }
-}
-
 pub struct Provider {
     pub id: Uuid,
     pub application_id: Uuid,
-    pub kind: ProviderKind,
     pub name: String,
     pub label: Option<String>,
-    pub client_id: String,
-    pub client_secret: String,
-    pub authorization_url: Url,
-    pub token_url: Url,
-    pub base_api_url: Url,
-    pub scopes: Vec<String>,
+    pub config: crate::service::client::ProviderInnerConfig,
 }
 
 impl Provider {
@@ -56,65 +21,50 @@ impl Provider {
     }
 
     pub fn oauth_client(&self, base_url: &str) -> oauth2::basic::BasicClient {
-        use oauth2::basic::BasicClient;
-        use oauth2::{AuthUrl, ClientId, ClientSecret, RedirectUrl, TokenUrl};
+        use oauth2::RedirectUrl;
 
         let redirect_url = format!("{base_url}/api/redirect");
         let redirect_url = RedirectUrl::new(redirect_url).expect("unable to parse redirect url");
 
-        BasicClient::new(
-            ClientId::new(self.client_id.clone()),
-            Some(ClientSecret::new(self.client_secret.clone())),
-            AuthUrl::from_url(self.authorization_url.clone()),
-            Some(TokenUrl::from_url(self.token_url.clone())),
-        )
-        .set_redirect_uri(redirect_url)
+        self.config.oauth_client().set_redirect_uri(redirect_url)
+    }
+
+    pub fn oauth_authorization_request(
+        &self,
+        base_url: &str,
+    ) -> (Url, CsrfToken, PkceCodeVerifier) {
+        // Generate a PKCE challenge.
+        let (pkce_challenge, pkce_verifier) = PkceCodeChallenge::new_random_sha256();
+        // Generate the full authorization URL.
+        let client = self.oauth_client(base_url);
+        let auth_request = client
+            .authorize_url(CsrfToken::new_random)
+            .add_scopes(self.config.oauth_scopes().into_iter());
+        let (auth_url, csrf_token) = auth_request.set_pkce_challenge(pkce_challenge).url();
+
+        (auth_url, csrf_token, pkce_verifier)
     }
 
     pub fn provider_client<'a>(
         &self,
         access_token: &'a str,
     ) -> crate::service::client::ProviderClient<'a> {
-        match self.kind {
-            ProviderKind::Github => crate::service::client::github::GithubProviderClient::new(
-                access_token,
-                self.base_api_url.clone(),
-            )
-            .into(),
-            ProviderKind::Gitlab => crate::service::client::gitlab::GitlabProviderClient::new(
-                access_token,
-                self.base_api_url.clone(),
-            )
-            .into(),
-            ProviderKind::Google => crate::service::client::gitlab::GitlabProviderClient::new(
-                access_token,
-                self.base_api_url.clone(),
-            )
-            .into(),
-        }
+        self.config.provider_client(access_token)
     }
 }
 
 impl FromRow<'_, SqliteRow> for Provider {
     fn from_row(row: &'_ SqliteRow) -> Result<Self, sqlx::Error> {
-        let kind: String = row.try_get(2)?;
-        let authorization_url: String = row.try_get(7)?;
-        let token_url: String = row.try_get(8)?;
-        let base_api_url: String = row.try_get(9)?;
-        let scopes: serde_json::Value = row.try_get(10)?;
+        let config: serde_json::Value = row.try_get(4)?;
+        let config: crate::service::client::ProviderInnerConfig =
+            serde_json::from_value(config).expect("couldn't decode json object");
 
         Ok(Self {
             id: row.try_get(0)?,
             application_id: row.try_get(1)?,
-            kind: ProviderKind::from_str(kind.as_str()).expect("invalid provider kind"),
-            name: row.try_get(3)?,
-            label: row.try_get(4)?,
-            client_id: row.try_get(5)?,
-            client_secret: row.try_get(6)?,
-            authorization_url: Url::parse(&authorization_url).expect("invalid authorization url"),
-            token_url: Url::parse(&token_url).expect("invalid token url"),
-            base_api_url: Url::parse(&base_api_url).expect("invalid base api url"),
-            scopes: serde_json::from_value(scopes).expect("couldn't dejsonify [String]"),
+            name: row.try_get(2)?,
+            label: row.try_get(3)?,
+            config,
         })
     }
 }
@@ -133,7 +83,7 @@ impl ListProviderByApplicationId {
         tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
     ) -> Result<Vec<Provider>, sqlx::Error> {
         sqlx::query_as(
-            r#"select id, application_id, kind, name, label, client_id, client_secret, authorization_url, token_url, base_api_url, scopes
+            r#"select id, application_id, name, label, config
 from providers
 where application_id = $1"#,
         )
@@ -152,15 +102,15 @@ where application_id = $1"#,
     }
 }
 
-pub struct FindProviderForInitialRequest {
-    initial_request_id: Uuid,
+pub struct FindProviderForApplicationAuthorizationRequest {
+    application_authorization_request_id: Uuid,
     provider_id: Uuid,
 }
 
-impl FindProviderForInitialRequest {
-    pub fn new(initial_request_id: Uuid, provider_id: Uuid) -> Self {
+impl FindProviderForApplicationAuthorizationRequest {
+    pub fn new(application_authorization_request_id: Uuid, provider_id: Uuid) -> Self {
         Self {
-            initial_request_id,
+            application_authorization_request_id,
             provider_id,
         }
     }
@@ -170,14 +120,14 @@ impl FindProviderForInitialRequest {
         tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
     ) -> Result<Option<Provider>, sqlx::Error> {
         sqlx::query_as(
-            r#"select providers.id, providers.application_id, providers.kind, providers.name, providers.label, providers.client_id, providers.client_secret, providers.authorization_url, providers.token_url, providers.base_api_url, providers.scopes
+            r#"select providers.id, providers.application_id, providers.name, providers.label, providers.config
 from providers
-join initial_requests on initial_requests.application_id = providers.application_id
-where initial_requests.id = $1
+join application_authorization_requests on application_authorization_requests.application_id = providers.application_id
+where application_authorization_requests.id = $1
     and providers.id = $2
 limit 1"#,
         )
-        .bind(self.initial_request_id)
+        .bind(self.application_authorization_request_id)
         .bind(self.provider_id)
         .fetch_optional(&mut **tx)
         .await
@@ -207,7 +157,7 @@ impl GetProviderById {
         tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
     ) -> Result<Provider, sqlx::Error> {
         sqlx::query_as(
-            r#"select id, application_id, kind, name, label, client_id, client_secret, authorization_url, token_url, base_api_url, scopes
+            r#"select id, application_id, name, label, config
 from providers
 where providers.id = $1
 limit 1"#,
@@ -241,10 +191,10 @@ impl GetProviderByAccessToken {
         tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
     ) -> Result<Provider, sqlx::Error> {
         sqlx::query_as(
-            r#"select providers.id, providers.application_id, providers.kind, providers.name, providers.label, providers.client_id, providers.client_secret, providers.authorization_url, providers.token_url, providers.base_api_url, providers.scopes
+            r#"select providers.id, providers.application_id, providers.name, providers.label, providers.config
 from providers
-join local_requests on local_requests.provider_id = providers.id
-join redirect_requests on redirect_requests.local_request_id = local_requests.id
+join provider_authorization_requests on provider_authorization_requests.provider_id = providers.id
+join redirect_requests on redirect_requests.provider_authorization_request_id = provider_authorization_requests.id
 join access_tokens on access_tokens.redirect_request_id = redirect_requests.id
 where access_tokens.id = $1
 limit 1"#,
@@ -266,47 +216,25 @@ limit 1"#,
 
 pub struct UpsertProvider<'a> {
     application_id: Uuid,
-    kind: ProviderKind,
     name: &'a str,
     label: Option<&'a str>,
 
-    client_id: &'a str,
-    client_secret: &'a str,
-
-    authorization_url: &'a Url,
-    token_url: &'a Url,
-    base_api_url: &'a Url,
-
-    scopes: &'a [String],
+    config: &'a crate::service::client::ProviderInnerConfig,
 }
 
 impl<'a> UpsertProvider<'a> {
     pub fn new(
         application_id: Uuid,
-        kind: ProviderKind,
         name: &'a str,
         label: Option<&'a str>,
 
-        client_id: &'a str,
-        client_secret: &'a str,
-
-        authorization_url: &'a Url,
-        token_url: &'a Url,
-        base_api_url: &'a Url,
-
-        scopes: &'a [String],
+        config: &'a crate::service::client::ProviderInnerConfig,
     ) -> Self {
         Self {
             application_id,
-            kind,
             name,
             label,
-            client_id,
-            client_secret,
-            authorization_url,
-            token_url,
-            base_api_url,
-            scopes,
+            config,
         }
     }
 
@@ -317,36 +245,27 @@ impl<'a> UpsertProvider<'a> {
         let id = Uuid::new_v4();
         let now = Utc::now().timestamp();
 
-        let scopes = serde_json::to_value(self.scopes).expect("couldn't jsonify [String]");
+        let config =
+            serde_json::to_value(&self.config).expect("couldn't jsonify oauth configuration");
 
-        let provider_id = sqlx::query_scalar(r#"insert into providers (id, application_id, kind, name, label, client_id, client_secret, authorization_url, token_url, base_api_url, scopes, created_at, updated_at)
-values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $12)
+        let provider_id = sqlx::query_scalar(
+            r#"insert into providers (id, application_id, name, label, config, created_at, updated_at)
+values ($1, $2, $3, $4, $5, $6, $6)
 on conflict (application_id, name) do update set
-    kind = $3,
-    label = $5,
-    client_id = $6,
-    client_secret = $7,
-    authorization_url = $8,
-    token_url = $9,
-    base_api_url = $10,
-    scopes = $11,
-    updated_at = $12,
+    label = $4,
+    config = $5,
+    updated_at = $6,
     deleted_at = null
-returning id"#)
-            .bind(id)
-            .bind(self.application_id)
-            .bind(self.kind.as_ref())
-            .bind(self.name)
-            .bind(self.label)
-            .bind(self.client_id)
-            .bind(self.client_secret)
-            .bind(self.authorization_url.as_str())
-            .bind(self.token_url.as_str())
-            .bind(self.base_api_url.as_str())
-            .bind(scopes)
-            .bind(now)
-            .fetch_one(&mut **tx)
-            .await?;
+returning id"#,
+        )
+        .bind(id)
+        .bind(self.application_id)
+        .bind(self.name)
+        .bind(self.label)
+        .bind(config)
+        .bind(now)
+        .fetch_one(&mut **tx)
+        .await?;
 
         tracing::debug!("done");
 

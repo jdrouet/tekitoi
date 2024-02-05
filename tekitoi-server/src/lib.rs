@@ -4,10 +4,24 @@ use axum::Extension;
 use tokio::net::TcpListener;
 use tower_http::trace::TraceLayer;
 
+mod entity;
 mod handler;
 pub mod model;
 mod service;
 pub mod settings;
+
+#[cfg(test)]
+fn init_logger() {
+    use tracing::Level;
+    use tracing_subscriber::FmtSubscriber;
+
+    let subscriber = FmtSubscriber::builder()
+        .with_max_level(Level::DEBUG)
+        .finish();
+    if let Err(err) = tracing::subscriber::set_global_default(subscriber) {
+        eprintln!("error: {err:?}");
+    }
+}
 
 pub struct Server {
     address: SocketAddr,
@@ -57,6 +71,7 @@ impl Server {
     }
 
     pub async fn listen(self) {
+        tracing::debug!("starting server on {}", self.address);
         let listener = TcpListener::bind(self.address).await.unwrap();
         axum::serve(listener, self.router()).await.unwrap()
     }

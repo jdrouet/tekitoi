@@ -1,10 +1,16 @@
 use super::error::ApiError;
-use crate::model::local::GetLocalRequestById;
 use crate::model::provider::GetProviderById;
+use crate::model::provider_authorization_request::GetProviderAuthorizationRequestById;
 use crate::model::redirected::FindRedirectedRequestByCode;
 use crate::model::token::CreateAccessToken;
 use crate::service::database::DatabasePool;
 use crate::service::BaseUrl;
+use axum::body::Body;
+use axum::extract::rejection::{FormRejection, JsonRejection};
+use axum::extract::{FromRequest, Request};
+use axum::http::header::CONTENT_TYPE;
+use axum::http::{HeaderMap, Response};
+use axum::response::IntoResponse;
 use axum::{Extension, Form, Json};
 use chrono::Duration;
 use oauth2::basic::BasicTokenType;
@@ -15,20 +21,68 @@ use oauth2::{
 };
 use url::Url;
 
+fn is_json_content(headers: &HeaderMap) -> bool {
+    let Some(content_type) = headers.get(CONTENT_TYPE) else {
+        return false;
+    };
+
+    let Ok(content_type) = content_type.to_str() else {
+        return false;
+    };
+
+    content_type.starts_with("application/json")
+}
+
+#[derive(Debug)]
+pub enum AccessTokenRequestPayloadParseError {
+    Json(JsonRejection),
+    Form(FormRejection),
+}
+
+impl IntoResponse for AccessTokenRequestPayloadParseError {
+    fn into_response(self) -> Response<Body> {
+        match self {
+            Self::Form(inner) => inner.into_response(),
+            Self::Json(inner) => inner.into_response(),
+        }
+    }
+}
+
 #[derive(Debug, serde::Deserialize)]
-pub struct TokenRequestPayload {
-    pub grant_type: String,
-    pub code_verifier: String,
-    pub redirect_uri: Url,
+pub struct AccessTokenRequestPayload {
     pub code: String,
-    #[serde(flatten)]
-    pub others: serde_json::Value,
+    pub code_verifier: String,
+    #[allow(dead_code)]
+    pub grant_type: String,
+    pub redirect_uri: Url,
+}
+
+#[axum::async_trait]
+impl<S> FromRequest<S> for AccessTokenRequestPayload
+where
+    S: Send + Sized + Sync,
+{
+    type Rejection = AccessTokenRequestPayloadParseError;
+
+    async fn from_request(req: Request, state: &S) -> Result<Self, Self::Rejection> {
+        if is_json_content(req.headers()) {
+            Json::<AccessTokenRequestPayload>::from_request(req, state)
+                .await
+                .map(|Json(inner)| inner)
+                .map_err(AccessTokenRequestPayloadParseError::Json)
+        } else {
+            Form::<AccessTokenRequestPayload>::from_request(req, state)
+                .await
+                .map(|Form(inner)| inner)
+                .map_err(AccessTokenRequestPayloadParseError::Form)
+        }
+    }
 }
 
 pub async fn handler(
     Extension(base_url): Extension<BaseUrl>,
     Extension(pool): Extension<DatabasePool>,
-    Form(payload): Form<TokenRequestPayload>,
+    payload: AccessTokenRequestPayload,
 ) -> Result<Json<StandardTokenResponse<EmptyExtraTokenFields, BasicTokenType>>, ApiError> {
     let mut tx = pool.begin().await?;
 
@@ -42,11 +96,13 @@ pub async fn handler(
             "unable to find authorization request",
         ));
     };
-    let local_request = GetLocalRequestById::new(redirected_request.local_request_id)
-        .execute(&mut tx)
-        .await?;
+    let provider_authorization_request = GetProviderAuthorizationRequestById::new(
+        redirected_request.provider_authorization_request_id,
+    )
+    .execute(&mut tx)
+    .await?;
 
-    let provider = GetProviderById::new(local_request.provider_id)
+    let provider = GetProviderById::new(provider_authorization_request.provider_id)
         .execute(&mut tx)
         .await?;
     //
@@ -55,7 +111,9 @@ pub async fn handler(
     let token_result = oauth_client
         .exchange_code(AuthorizationCode::new(redirected_request.code))
         // Set the PKCE code verifier.
-        .set_pkce_verifier(PkceCodeVerifier::new(local_request.pkce_verifier))
+        .set_pkce_verifier(PkceCodeVerifier::new(
+            provider_authorization_request.pkce_verifier,
+        ))
         .request_async(async_http_client)
         .await
         .map_err(|err| {
@@ -92,4 +150,115 @@ pub async fn handler(
     tx.commit().await?;
     //
     Ok(Json(token_response))
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::model::application::FindApplicationByClientId;
+    use crate::model::application_authorization_request::CreateApplicationAuthorizationRequest;
+    use crate::model::provider::ListProviderByApplicationId;
+    use crate::model::provider_authorization_request::CreateProviderAuthorizationRequest;
+    use crate::model::redirected::CreateRedirectedRequest;
+    use crate::{settings::Settings, Server};
+    use axum::body::Body;
+    use axum::extract::Request;
+    use axum::http::header::{CONTENT_TYPE, LOCATION};
+    use axum::http::StatusCode;
+    use oauth2::CsrfToken;
+    use std::collections::HashMap;
+    use std::path::PathBuf;
+    use tower::util::ServiceExt;
+
+    fn settings() -> Settings {
+        Settings::build(Some(PathBuf::from("./tests/simple.toml")))
+    }
+
+    #[tokio::test]
+    #[serial_test::serial(database)]
+    async fn success() {
+        crate::init_logger();
+
+        let server = Server::new(settings()).await;
+
+        let mut tx = server.database.begin().await.unwrap();
+
+        let application = FindApplicationByClientId::new("main-client-id")
+            .execute(&mut tx)
+            .await
+            .unwrap()
+            .unwrap();
+        let providers = ListProviderByApplicationId::new(application.id)
+            .execute(&mut tx)
+            .await
+            .unwrap();
+
+        let app_state = CsrfToken::new_random().secret().to_owned();
+        let (app_code_challenge, app_code_verifier) =
+            oauth2::PkceCodeChallenge::new_random_sha256();
+        let app_request_id = CreateApplicationAuthorizationRequest::new(
+            application.id,
+            app_code_challenge.as_str(),
+            app_code_challenge.method().as_str(),
+            app_state.as_ref(),
+            &application.redirect_uri,
+        )
+        .execute(&mut tx)
+        .await
+        .unwrap();
+
+        let provider_csrf_token = CsrfToken::new_random();
+        let (provider_code_challenge, provider_pkce_verifier) =
+            oauth2::PkceCodeChallenge::new_random_sha256();
+        let provider_request_id = CreateProviderAuthorizationRequest::new(
+            app_request_id,
+            providers[0].id,
+            provider_csrf_token.secret(),
+            provider_pkce_verifier.secret(),
+        )
+        .execute(&mut tx)
+        .await
+        .unwrap();
+
+        let _redirected_id =
+            CreateRedirectedRequest::new(provider_request_id, provider_code_challenge.as_str())
+                .execute(&mut tx)
+                .await
+                .unwrap();
+
+        tx.commit().await.unwrap();
+
+        let app = server.router();
+
+        let res = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/access-token")
+                    .method("POST")
+                    .header(CONTENT_TYPE, "application/json")
+                    .body(Body::from(
+                        serde_json::to_vec(&serde_json::json!({
+                            "code": app_code_challenge.as_str(),
+                            "code_verifier": app_code_verifier.secret(),
+                            "grant_type": "code",
+                            "redirect_uri": application.redirect_uri.as_str(),
+                        }))
+                        .unwrap(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        let status = res.status();
+        assert_eq!(status, StatusCode::TEMPORARY_REDIRECT);
+
+        let location = res.headers().get(LOCATION).unwrap();
+        let location = location.to_str().unwrap().to_owned();
+        let location = url::Url::parse(&location).unwrap();
+        assert_eq!(location.host_str().unwrap(), "localhost");
+        let query = location.query_pairs().collect::<HashMap<_, _>>();
+        println!("query: {query:?}");
+        assert_eq!(query.get("code").unwrap(), app_code_challenge.as_str());
+        assert_eq!(query.get("state").unwrap(), app_state.as_str());
+    }
 }

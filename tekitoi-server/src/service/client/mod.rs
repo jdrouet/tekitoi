@@ -1,21 +1,24 @@
 use crate::{
     model::{
         application::{DeleteOtherApplications, UpsertApplication},
-        provider::{DeleteOtherProviders, ProviderKind, UpsertProvider},
+        provider::{DeleteOtherProviders, UpsertProvider},
     },
     service::database::{DatabasePool, DatabaseTransaction},
 };
+use oauth2::{AuthUrl, ClientId, ClientSecret, Scope, TokenUrl};
 use std::collections::HashMap;
 use url::Url;
 use uuid::Uuid;
 
 use self::{
     github::GithubProviderConfig, gitlab::GitlabProviderConfig, google::GoogleProviderConfig,
+    oauth::OauthProviderConfig,
 };
 
 pub mod github;
 pub mod gitlab;
 pub mod google;
+pub mod oauth;
 
 #[derive(Debug, Default, serde::Deserialize)]
 pub struct ApplicationCollectionConfig(HashMap<String, ApplicationConfig>);
@@ -135,53 +138,81 @@ impl ProviderCollectionConfig {
 pub struct ProviderConfig {
     #[serde(default)]
     pub label: Option<String>,
-    pub client_id: String,
-    pub client_secret: String,
-    #[serde(default)]
-    pub scopes: Vec<String>,
     #[serde(flatten)]
     pub inner: ProviderInnerConfig,
 }
 
-#[derive(Debug, serde::Deserialize)]
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
 #[serde(tag = "type", rename_all = "kebab-case")]
 pub enum ProviderInnerConfig {
     Github(GithubProviderConfig),
     Gitlab(GitlabProviderConfig),
     Google(GoogleProviderConfig),
+    Oauth(OauthProviderConfig),
 }
 
 impl ProviderInnerConfig {
-    fn kind(&self) -> ProviderKind {
+    pub fn oauth_scopes(&self) -> Vec<oauth2::Scope> {
         match self {
-            Self::Github(_) => ProviderKind::Github,
-            Self::Gitlab(_) => ProviderKind::Gitlab,
-            Self::Google(_) => ProviderKind::Google,
+            Self::Github(inner) => inner.scopes.iter().map(|s| Scope::new(s.clone())).collect(),
+            Self::Gitlab(inner) => inner.scopes.iter().map(|s| Scope::new(s.clone())).collect(),
+            Self::Google(inner) => inner.scopes.iter().map(|s| Scope::new(s.clone())).collect(),
+            Self::Oauth(inner) => inner.scopes.iter().map(|s| Scope::new(s.clone())).collect(),
         }
     }
 
-    fn authorization_url(&self) -> &Url {
+    pub fn oauth_client(&self) -> oauth2::basic::BasicClient {
+        oauth2::basic::BasicClient::new(
+            self.client_id(),
+            self.client_secret(),
+            self.authorization_url(),
+            self.token_url(),
+        )
+    }
+
+    pub fn provider_client<'a>(&self, access_token: &'a str) -> ProviderClient<'a> {
         match self {
-            Self::Github(inner) => &inner.authorization_url,
-            Self::Gitlab(inner) => &inner.authorization_url,
-            Self::Google(inner) => &inner.authorization_url,
+            Self::Oauth(inner) => inner.provider_client(access_token).into(),
+            Self::Github(inner) => inner.provider_client(access_token).into(),
+            Self::Gitlab(inner) => inner.provider_client(access_token).into(),
+            Self::Google(inner) => inner.provider_client(access_token).into(),
         }
     }
 
-    fn token_url(&self) -> &Url {
-        match self {
-            Self::Github(inner) => &inner.token_url,
-            Self::Gitlab(inner) => &inner.token_url,
-            Self::Google(inner) => &inner.token_url,
-        }
+    fn client_id(&self) -> ClientId {
+        ClientId::new(match self {
+            Self::Oauth(inner) => inner.client_id.clone(),
+            Self::Github(inner) => inner.client_id.clone(),
+            Self::Gitlab(inner) => inner.client_id.clone(),
+            Self::Google(inner) => inner.client_id.clone(),
+        })
     }
 
-    fn base_api_url(&self) -> &Url {
-        match self {
-            Self::Github(inner) => &inner.base_api_url,
-            Self::Gitlab(inner) => &inner.base_api_url,
-            Self::Google(inner) => &inner.base_api_url,
-        }
+    fn client_secret(&self) -> Option<ClientSecret> {
+        Some(ClientSecret::new(match self {
+            Self::Oauth(inner) => inner.client_secret.clone(),
+            Self::Github(inner) => inner.client_secret.clone(),
+            Self::Gitlab(inner) => inner.client_secret.clone(),
+            Self::Google(inner) => inner.client_secret.clone(),
+        }))
+    }
+
+    fn authorization_url(&self) -> AuthUrl {
+        AuthUrl::from_url(match self {
+            Self::Oauth(inner) => inner.authorization_url.clone(),
+            Self::Github(inner) => inner.authorization_url.clone(),
+            Self::Gitlab(inner) => inner.authorization_url.clone(),
+            Self::Google(inner) => inner.authorization_url.clone(),
+        })
+    }
+
+    fn token_url(&self) -> Option<TokenUrl> {
+        Some(TokenUrl::from_url(match self {
+            Self::Oauth(inner) => inner.token_url.clone(),
+            Self::Github(inner) => inner.token_url.clone(),
+            Self::Gitlab(inner) => inner.token_url.clone(),
+            Self::Google(inner) => inner.token_url.clone(),
+        }))
     }
 }
 
@@ -194,20 +225,9 @@ impl ProviderConfig {
     ) -> Result<Uuid, sqlx::Error> {
         tracing::debug!("synchronize provider name={name:?}");
 
-        UpsertProvider::new(
-            application_id,
-            self.inner.kind(),
-            name,
-            self.label.as_deref(),
-            &self.client_id,
-            &self.client_secret,
-            self.inner.authorization_url(),
-            self.inner.token_url(),
-            self.inner.base_api_url(),
-            &self.scopes,
-        )
-        .execute(tx)
-        .await
+        UpsertProvider::new(application_id, name, self.label.as_deref(), &self.inner)
+            .execute(tx)
+            .await
     }
 }
 
@@ -216,6 +236,7 @@ pub enum ProviderClient<'a> {
     Github(github::GithubProviderClient<'a>),
     Gitlab(gitlab::GitlabProviderClient<'a>),
     Google(google::GoogleProviderClient<'a>),
+    Oauth(oauth::OauthProviderClient<'a>),
 }
 
 impl<'a> From<github::GithubProviderClient<'a>> for ProviderClient<'a> {
@@ -236,12 +257,19 @@ impl<'a> From<google::GoogleProviderClient<'a>> for ProviderClient<'a> {
     }
 }
 
+impl<'a> From<oauth::OauthProviderClient<'a>> for ProviderClient<'a> {
+    fn from(value: oauth::OauthProviderClient<'a>) -> Self {
+        Self::Oauth(value)
+    }
+}
+
 impl<'a> ProviderClient<'a> {
     pub async fn fetch_user(&self) -> Result<ProviderUser, String> {
         match self {
             Self::Github(client) => client.fetch_user().await.map(Into::into),
             Self::Gitlab(client) => client.fetch_user().await.map(Into::into),
             Self::Google(client) => client.fetch_user().await.map(Into::into),
+            Self::Oauth(client) => client.fetch_user().await.map(Into::into),
         }
     }
 }
@@ -252,6 +280,7 @@ pub enum ProviderUser {
     Github(github::GithubUser),
     Gitlab(gitlab::GitlabUser),
     Google(google::GoogleUser),
+    Oauth(oauth::OauthUser),
 }
 
 impl From<github::GithubUser> for ProviderUser {
@@ -269,5 +298,11 @@ impl From<gitlab::GitlabUser> for ProviderUser {
 impl From<google::GoogleUser> for ProviderUser {
     fn from(value: google::GoogleUser) -> Self {
         Self::Google(value)
+    }
+}
+
+impl From<oauth::OauthUser> for ProviderUser {
+    fn from(value: oauth::OauthUser) -> Self {
+        Self::Oauth(value)
     }
 }

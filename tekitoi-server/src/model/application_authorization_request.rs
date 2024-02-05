@@ -15,7 +15,7 @@ use crate::service::database::DatabaseTransaction;
 
 // TODO add response_type with an enum
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
-pub struct IncomingRequest {
+pub struct ApplicationAuthorizationRequest {
     pub id: Uuid,
     pub application_id: Uuid,
     pub code_challenge: String,
@@ -24,7 +24,7 @@ pub struct IncomingRequest {
     pub redirect_uri: Url,
 }
 
-impl FromRow<'_, SqliteRow> for IncomingRequest {
+impl FromRow<'_, SqliteRow> for ApplicationAuthorizationRequest {
     fn from_row(row: &'_ SqliteRow) -> Result<Self, sqlx::Error> {
         let redirect_uri: String = row.try_get(5)?;
 
@@ -39,7 +39,7 @@ impl FromRow<'_, SqliteRow> for IncomingRequest {
     }
 }
 
-pub struct CreateIncomingRequest<'a> {
+pub struct CreateApplicationAuthorizationRequest<'a> {
     pub application_id: Uuid,
     pub code_challenge: &'a str,
     pub code_challenge_method: &'a str,
@@ -47,7 +47,7 @@ pub struct CreateIncomingRequest<'a> {
     pub redirect_uri: &'a Url,
 }
 
-impl<'a> CreateIncomingRequest<'a> {
+impl<'a> CreateApplicationAuthorizationRequest<'a> {
     pub fn new(
         application_id: Uuid,
         code_challenge: &'a str,
@@ -73,7 +73,7 @@ impl<'a> CreateIncomingRequest<'a> {
         let id = Uuid::new_v4();
 
         sqlx::query_scalar(
-            r#"insert into initial_requests (id, application_id, code_challenge, code_challenge_method, state, redirect_uri, created_at, expired_at)
+            r#"insert into application_authorization_requests (id, application_id, code_challenge, code_challenge_method, state, redirect_uri, created_at, expired_at)
 values ($1, $2, $3, $4, $5, $6, $7, $8)
 returning id"#,
         )
@@ -99,11 +99,11 @@ returning id"#,
     }
 }
 
-pub struct GetIncomingRequestById {
+pub struct GetApplicationAuthorizationRequestById {
     request_id: Uuid,
 }
 
-impl GetIncomingRequestById {
+impl GetApplicationAuthorizationRequestById {
     pub fn new(request_id: Uuid) -> Self {
         Self { request_id }
     }
@@ -111,10 +111,10 @@ impl GetIncomingRequestById {
     async fn execute_sqlite<'c>(
         &self,
         tx: &mut Transaction<'c, Sqlite>,
-    ) -> Result<IncomingRequest, sqlx::Error> {
+    ) -> Result<ApplicationAuthorizationRequest, sqlx::Error> {
         sqlx::query_as(
             r#"select id, application_id, code_challenge, code_challenge_method, state, redirect_uri
-from initial_requests
+from application_authorization_requests
 where id = $1
 limit 1"#,
         )
@@ -126,7 +126,7 @@ limit 1"#,
     pub async fn execute<'c>(
         &self,
         executor: &mut DatabaseTransaction<'c>,
-    ) -> Result<IncomingRequest, sqlx::Error> {
+    ) -> Result<ApplicationAuthorizationRequest, sqlx::Error> {
         match executor {
             DatabaseTransaction::Sqlite(inner) => self.execute_sqlite(inner).await,
         }

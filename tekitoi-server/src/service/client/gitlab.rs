@@ -1,7 +1,11 @@
 use url::Url;
 
-#[derive(Debug, serde::Deserialize)]
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
 pub struct GitlabProviderConfig {
+    pub client_id: String,
+    pub client_secret: String,
+    #[serde(default)]
+    pub scopes: Vec<String>,
     #[serde(default = "GitlabProviderConfig::default_authorization_url")]
     pub authorization_url: Url,
     #[serde(default = "GitlabProviderConfig::default_token_url")]
@@ -23,6 +27,13 @@ impl GitlabProviderConfig {
 
     fn default_base_api_url() -> Url {
         Url::parse("https://gitlab.com").expect("couldn't parse gitlab default base api url")
+    }
+
+    pub fn provider_client<'a>(&self, access_token: &'a str) -> GitlabProviderClient<'a> {
+        GitlabProviderClient {
+            access_token,
+            base_api_url: self.base_api_url.clone(),
+        }
     }
 }
 

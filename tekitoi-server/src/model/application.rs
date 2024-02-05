@@ -1,4 +1,5 @@
 use chrono::Utc;
+use oauth2::ClientId;
 use sqlx::{sqlite::SqliteRow, FromRow, Row, Sqlite, Transaction};
 use url::Url;
 use uuid::Uuid;
@@ -7,7 +8,7 @@ use crate::service::database::DatabaseTransaction;
 
 pub struct Application {
     pub id: Uuid,
-    pub client_id: String,
+    pub client_id: ClientId,
     pub client_secrets: Vec<String>,
     pub name: String,
     pub label: Option<String>,
@@ -25,8 +26,8 @@ impl Application {
         } else {
             tracing::trace!(
                 "invalid redirect uri, expected {:?}, got {:?}",
-                self.redirect_uri.to_string(),
-                url.to_string()
+                self.redirect_uri.as_str(),
+                url.as_str()
             );
             Err("Invalid redirect uri.")
         }
@@ -35,12 +36,13 @@ impl Application {
 
 impl FromRow<'_, SqliteRow> for Application {
     fn from_row(row: &'_ SqliteRow) -> Result<Self, sqlx::Error> {
+        let client_id: String = row.try_get(1)?;
         let client_secrets: serde_json::Value = row.try_get(2)?;
         let redirect_url: String = row.try_get(5)?;
 
         Ok(Self {
             id: row.try_get(0)?,
-            client_id: row.try_get(1)?,
+            client_id: ClientId::new(client_id),
             client_secrets: serde_json::from_value(client_secrets)
                 .expect("couldn't dejsonify [String]"),
             name: row.try_get(3)?,
@@ -68,7 +70,8 @@ impl<'a> FindApplicationByClientId<'a> {
         sqlx::query_as(
             r#"select id, client_id, client_secrets, name, label, redirect_uri
 from applications
-where client_id = $1"#,
+where client_id = $1
+limit 1"#,
         )
         .bind(self.client_id)
         .fetch_optional(&mut **tx)

@@ -26,7 +26,7 @@ async fn main() -> std::io::Result<()> {
 
     let tcp_listener = TcpListener::bind(address).await.unwrap();
 
-    tracing::debug!("starting server");
+    tracing::debug!("starting server on {address}");
     let cache = cfg.cache();
 
     let app = axum::Router::new()

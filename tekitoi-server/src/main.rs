@@ -9,6 +9,5 @@ async fn main() {
     cfg.set_logger();
 
     let server = Server::new(cfg).await;
-    tracing::debug!("starting server");
     server.listen().await;
 }
