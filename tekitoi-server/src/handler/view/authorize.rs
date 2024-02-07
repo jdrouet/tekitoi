@@ -1,6 +1,5 @@
 use super::error::ViewError;
-use crate::entity::{AuthorizationState, RedirectUri};
-use crate::handler::api::error::ApiError;
+use crate::entity::{AuthorizationError, AuthorizationState, RedirectUri};
 use crate::model::provider::{ListProviderByApplicationId, Provider};
 use crate::model::{
     application::FindApplicationByClientId,
@@ -8,7 +7,6 @@ use crate::model::{
 };
 use crate::service::database::DatabasePool;
 use axum::extract::Query;
-use axum::http::StatusCode;
 use axum::response::{Html, IntoResponse, Response};
 use axum::Extension;
 use oauth2::{ClientId, PkceCodeChallenge};
@@ -33,7 +31,7 @@ struct AuthorizeTemplate {
 
 pub(crate) enum AuthorizeError {
     View(ViewError),
-    Redirect(RedirectUri, ApiError),
+    Redirect(RedirectUri, AuthorizationError),
 }
 
 impl AuthorizeError {
@@ -72,9 +70,7 @@ pub(crate) async fn handler(
     if !application.is_redirect_uri_matching(params.redirect_uri.as_ref()) {
         return Err(AuthorizeError::Redirect(
             params.redirect_uri,
-            ApiError::new(StatusCode::IM_A_TEAPOT, "redirect_uri_mismatch").with_description(
-                "The redirect_uri MUST match the registered callback URL for this application.",
-            ),
+            AuthorizationError::create_redirect_uri_mismatch().with_state(params.state.inner()),
         ));
     }
 

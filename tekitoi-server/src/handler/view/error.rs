@@ -13,14 +13,6 @@ pub struct ViewError {
 }
 
 impl ViewError {
-    pub fn bad_request(message: String, description: String) -> Self {
-        Self {
-            code: StatusCode::BAD_REQUEST,
-            message,
-            description,
-        }
-    }
-
     pub fn not_found(message: String, description: String) -> Self {
         Self {
             code: StatusCode::NOT_FOUND,

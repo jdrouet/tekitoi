@@ -2,7 +2,7 @@ use std::borrow::Cow;
 
 use axum::{
     http::StatusCode,
-    response::{IntoResponse, Redirect, Response},
+    response::{IntoResponse, Response},
     Json,
 };
 use url::Url;
@@ -19,23 +19,6 @@ pub(crate) struct ApiError {
 }
 
 impl ApiError {
-    pub(crate) fn new<E: Into<Cow<'static, str>>>(code: StatusCode, error: E) -> Self {
-        Self {
-            code,
-            error: error.into(),
-            error_description: None,
-            error_uri: None,
-        }
-    }
-
-    pub(crate) fn with_description<D: Into<Cow<'static, str>>>(
-        mut self,
-        error_description: D,
-    ) -> Self {
-        self.error_description = Some(error_description.into());
-        self
-    }
-
     pub(crate) fn bad_request<T: Into<Cow<'static, str>>>(value: T) -> Self {
         Self {
             code: StatusCode::BAD_REQUEST,
@@ -65,16 +48,6 @@ impl ApiError {
 
     fn status_code(&self) -> StatusCode {
         self.code
-    }
-
-    fn error(&self) -> &str {
-        &self.error
-    }
-
-    pub(crate) fn as_redirect(self, mut redirect_url: Url) -> Redirect {
-        let params = serde_url_params::to_string(&self).expect("couldn't url encode error message");
-        redirect_url.set_query(Some(&params));
-        Redirect::temporary(redirect_url.as_str())
     }
 }
 

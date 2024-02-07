@@ -40,7 +40,7 @@ impl Provider {
         let client = self.oauth_client(base_url);
         let auth_request = client
             .authorize_url(CsrfToken::new_random)
-            .add_scopes(self.config.oauth_scopes().into_iter());
+            .add_scopes(self.config.oauth_scopes());
         let (auth_url, csrf_token) = auth_request.set_pkce_challenge(pkce_challenge).url();
 
         (auth_url, csrf_token, pkce_verifier)
@@ -240,7 +240,7 @@ impl<'a> UpsertProvider<'a> {
         let now = Utc::now().timestamp();
 
         let config =
-            serde_json::to_value(&self.config).expect("couldn't jsonify oauth configuration");
+            serde_json::to_value(self.config).expect("couldn't jsonify oauth configuration");
 
         let provider_id = sqlx::query_scalar(
             r#"insert into providers (id, application_id, name, label, config, created_at, updated_at)

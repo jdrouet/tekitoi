@@ -12,10 +12,7 @@ pub(crate) struct OauthProviderConfig {
 }
 
 impl OauthProviderConfig {
-    pub(crate) fn provider_client<'a>(
-        &self,
-        access_token: String,
-    ) -> Box<dyn super::ProviderClient> {
+    pub(crate) fn provider_client(&self, access_token: String) -> Box<dyn super::ProviderClient> {
         Box::new(OauthProviderClient {
             access_token,
             api_user_url: self.api_user_url.clone(),
