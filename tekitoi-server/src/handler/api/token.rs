@@ -49,10 +49,10 @@ impl IntoResponse for AccessTokenRequestPayloadParseError {
 }
 
 #[derive(Debug, serde::Deserialize)]
+#[allow(dead_code)]
 pub(crate) struct AccessTokenRequestPayload {
     pub code: String,
     pub code_verifier: String,
-    #[allow(dead_code)]
     pub grant_type: String,
     pub redirect_uri: Url,
 }
@@ -125,7 +125,7 @@ pub(crate) async fn handler(
                     tracing::debug!("unable to fetch token: {:?}", err);
                 }
             };
-            ApiError::internal_server(err)
+            ApiError::internal_server(err.to_string())
         })?;
 
     let duration = token_result
@@ -141,11 +141,12 @@ pub(crate) async fn handler(
     .await?;
 
     // TODO find a better access token than a UUID
-    let token_response = StandardTokenResponse::<EmptyExtraTokenFields, BasicTokenType>::new(
+    let mut token_response = StandardTokenResponse::<EmptyExtraTokenFields, BasicTokenType>::new(
         AccessToken::new(token_id.to_string()),
         BasicTokenType::Bearer,
         EmptyExtraTokenFields {},
     );
+    token_response.set_expires_in(token_result.expires_in().as_ref());
 
     tx.commit().await?;
     //
@@ -159,15 +160,21 @@ mod tests {
     use crate::model::provider::ListProviderByApplicationId;
     use crate::model::provider_authorization_request::CreateProviderAuthorizationRequest;
     use crate::model::redirected::CreateRedirectedRequest;
+    use crate::service::client::oauth::OauthProviderConfig;
+    use crate::service::client::{
+        ApplicationCollectionConfig, ApplicationConfig, ProviderCollectionConfig, ProviderConfig,
+    };
     use crate::{settings::Settings, Server};
     use axum::body::Body;
     use axum::extract::Request;
-    use axum::http::header::{CONTENT_TYPE, LOCATION};
+    use axum::http::header::CONTENT_TYPE;
     use axum::http::StatusCode;
-    use oauth2::CsrfToken;
-    use std::collections::HashMap;
+    use http_body_util::BodyExt;
+    use oauth2::basic::BasicTokenType;
+    use oauth2::{CsrfToken, EmptyExtraTokenFields, StandardTokenResponse, TokenResponse};
     use std::path::PathBuf;
     use tower::util::ServiceExt;
+    use url::Url;
 
     fn settings() -> Settings {
         Settings::build(Some(PathBuf::from("./tests/simple.toml")))
@@ -178,7 +185,53 @@ mod tests {
     async fn success() {
         crate::init_logger();
 
-        let server = Server::new(settings()).await;
+        let mut mock = mockito::Server::new_async().await;
+
+        let mut settings = settings();
+        settings.applications = ApplicationCollectionConfig(
+            [(
+                "main".to_string(),
+                ApplicationConfig {
+                    label: None,
+                    client_id: "main-client-id".to_string(),
+                    client_secrets: vec!["main-client-secret".to_string()],
+                    redirect_uri: Url::parse("http://localhost/api/redirect").unwrap(),
+
+                    providers: ProviderCollectionConfig(
+                        [(
+                            "local".to_string(),
+                            ProviderConfig {
+                                label: None,
+                                inner: crate::service::client::ProviderInnerConfig::Oauth(
+                                    OauthProviderConfig {
+                                        client_id: "client-id".to_string(),
+                                        client_secret: "client-secret".to_string(),
+                                        scopes: Vec::new(),
+                                        authorization_url: Url::parse(
+                                            "http://localhost/authorization",
+                                        )
+                                        .unwrap(),
+                                        token_url: Url::parse(&format!(
+                                            "http://{}/api/token",
+                                            mock.host_with_port()
+                                        ))
+                                        .unwrap(),
+                                        api_user_url: Url::parse("http://localhost/api/user")
+                                            .unwrap(),
+                                    },
+                                ),
+                            },
+                        )]
+                        .into_iter()
+                        .collect(),
+                    ),
+                },
+            )]
+            .into_iter()
+            .collect(),
+        );
+
+        let server = Server::new(settings).await;
 
         let mut tx = server.database.begin().await.unwrap();
 
@@ -229,6 +282,14 @@ mod tests {
 
         let app = server.router();
 
+        let token_mock = mock
+            .mock("POST", "/api/token")
+            .with_body(
+                r#"{"access_token":"foo","token_type":"bearer","expires_in":42,"refresh_token":null}"#,
+            )
+            .create_async()
+            .await;
+
         let res = app
             .oneshot(
                 Request::builder()
@@ -250,15 +311,13 @@ mod tests {
             .unwrap();
 
         let status = res.status();
-        assert_eq!(status, StatusCode::TEMPORARY_REDIRECT);
+        assert_eq!(status, StatusCode::OK);
 
-        let location = res.headers().get(LOCATION).unwrap();
-        let location = location.to_str().unwrap().to_owned();
-        let location = url::Url::parse(&location).unwrap();
-        assert_eq!(location.host_str().unwrap(), "localhost");
-        let query = location.query_pairs().collect::<HashMap<_, _>>();
-        println!("query: {query:?}");
-        assert_eq!(query.get("code").unwrap(), app_code_challenge.as_str());
-        assert_eq!(query.get("state").unwrap(), app_state.as_str());
+        let body = res.into_body().collect().await.unwrap().to_bytes();
+        let body: StandardTokenResponse<EmptyExtraTokenFields, BasicTokenType> =
+            serde_json::from_slice(&body).unwrap();
+        assert_eq!(body.expires_in().unwrap().as_secs(), 42);
+
+        token_mock.assert_async().await;
     }
 }

@@ -86,7 +86,7 @@ mod tests {
 
         let body = res.into_body().collect().await.unwrap().to_bytes();
         let body: serde_json::Value = serde_json::from_slice(&body).unwrap();
-        assert_eq!(body, serde_json::json!("provider not found"));
+        assert_eq!(body, serde_json::json!({ "error": "provider not found" }));
     }
 
     #[tokio::test]

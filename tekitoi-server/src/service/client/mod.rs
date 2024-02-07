@@ -21,7 +21,7 @@ pub mod google;
 pub mod oauth;
 
 #[derive(Debug, Default, serde::Deserialize)]
-pub struct ApplicationCollectionConfig(HashMap<String, ApplicationConfig>);
+pub(crate) struct ApplicationCollectionConfig(pub(crate) HashMap<String, ApplicationConfig>);
 
 impl ApplicationCollectionConfig {
     async fn delete_other_applications<'c>(
@@ -56,7 +56,7 @@ impl ApplicationCollectionConfig {
 }
 
 #[derive(Debug, serde::Deserialize)]
-pub struct ApplicationConfig {
+pub(crate) struct ApplicationConfig {
     #[serde(default)]
     pub label: Option<String>,
     pub redirect_uri: Url,
@@ -91,7 +91,7 @@ impl ApplicationConfig {
 }
 
 #[derive(Debug, Default, serde::Deserialize)]
-pub struct ProviderCollectionConfig(HashMap<String, ProviderConfig>);
+pub struct ProviderCollectionConfig(pub(crate) HashMap<String, ProviderConfig>);
 
 impl ProviderCollectionConfig {
     async fn delete_other_providers<'c>(

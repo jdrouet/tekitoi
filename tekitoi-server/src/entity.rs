@@ -23,3 +23,9 @@ impl AsRef<Url> for RedirectUri {
         &self.0
     }
 }
+
+impl RedirectUri {
+    pub fn inner(self) -> Url {
+        self.0
+    }
+}

@@ -20,17 +20,8 @@ impl Application {
         self.label.as_deref().unwrap_or(self.name.as_str())
     }
 
-    pub(crate) fn check_redirect_uri(&self, url: &Url) -> Result<(), &'static str> {
-        if &self.redirect_uri == url {
-            Ok(())
-        } else {
-            tracing::trace!(
-                "invalid redirect uri, expected {:?}, got {:?}",
-                self.redirect_uri.as_str(),
-                url.as_str()
-            );
-            Err("Invalid redirect uri.")
-        }
+    pub(crate) fn is_redirect_uri_matching(&self, url: &Url) -> bool {
+        &self.redirect_uri == url
     }
 }
 

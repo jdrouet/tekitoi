@@ -21,16 +21,18 @@ sailfish = { version = "0.8" }
 serde = { version = "1.0" }
 serde_qs = { version = "0.12" }
 serde_json = { version = "1.0" }
-tower-http = { version = "0.5.0", features = ["trace"] }
+tower-http = { version = "0.5", features = ["trace"] }
 tracing = { version = "0.1" }
 tracing-subscriber = { version = "0.3" }
 url = { version = "2.5", default-features = false, features = ["serde"] }
 uuid = { version = "1.7", features = ["serde", "v4"] }
 tokio = { version = "1.35", features = ["macros", "rt-multi-thread"] }
-sqlx = { version = "0.7.3", features = ["runtime-tokio", "sqlite", "uuid"] }
+sqlx = { version = "0.7", features = ["runtime-tokio", "sqlite", "uuid"] }
+serde_url_params = { version = "0.2" }
 
 [dev-dependencies]
 http-body-util = { version = "0.1" }
+mockito = { version = "1.2" }
 regex = { version = "1.10" }
 tower = { version = "0.4" }
 serial_test = { version = "3.0" }

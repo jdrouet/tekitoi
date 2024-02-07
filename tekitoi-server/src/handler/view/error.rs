@@ -20,6 +20,14 @@ impl ViewError {
             description,
         }
     }
+
+    pub fn not_found(message: String, description: String) -> Self {
+        Self {
+            code: StatusCode::NOT_FOUND,
+            message,
+            description,
+        }
+    }
 }
 
 impl std::fmt::Display for ViewError {

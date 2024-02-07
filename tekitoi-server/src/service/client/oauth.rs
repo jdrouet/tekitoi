@@ -1,7 +1,5 @@
 use url::Url;
 
-// const HEADER_USER_AGENT: &str = concat!(env!("CARGO_PKG_NAME"), "-", env!("CARGO_PKG_VERSION"));
-
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
 pub(crate) struct OauthProviderConfig {
     pub client_id: String,

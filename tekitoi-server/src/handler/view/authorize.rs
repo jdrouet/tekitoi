@@ -1,12 +1,16 @@
 use super::error::ViewError;
 use crate::entity::{AuthorizationState, RedirectUri};
+use crate::handler::api::error::ApiError;
 use crate::model::provider::{ListProviderByApplicationId, Provider};
 use crate::model::{
     application::FindApplicationByClientId,
     application_authorization_request::CreateApplicationAuthorizationRequest,
 };
 use crate::service::database::DatabasePool;
-use axum::{extract::Query, response::Html, Extension};
+use axum::extract::Query;
+use axum::http::StatusCode;
+use axum::response::{Html, IntoResponse, Response};
+use axum::Extension;
 use oauth2::{ClientId, PkceCodeChallenge};
 use sailfish::TemplateOnce;
 use uuid::Uuid;
@@ -27,27 +31,52 @@ struct AuthorizeTemplate {
     providers: Vec<Provider>,
 }
 
+pub(crate) enum AuthorizeError {
+    View(ViewError),
+    Redirect(RedirectUri, ApiError),
+}
+
+impl AuthorizeError {
+    fn view<T: Into<ViewError>>(value: T) -> Self {
+        Self::View(value.into())
+    }
+}
+
+impl IntoResponse for AuthorizeError {
+    fn into_response(self) -> Response {
+        match self {
+            Self::View(inner) => inner.into_response(),
+            Self::Redirect(uri, err) => err.as_redirect(uri.inner()).into_response(),
+        }
+    }
+}
+
 pub(crate) async fn handler(
     Extension(db_pool): Extension<DatabasePool>,
     Query(params): Query<AuthorizationRequest>,
-) -> Result<Html<String>, ViewError> {
-    let mut tx = db_pool.begin().await?;
+) -> Result<Html<String>, AuthorizeError> {
+    let mut tx = db_pool.begin().await.map_err(AuthorizeError::view)?;
 
+    // If the client_id doesn't match any application, then we can just display a "not found" page.
     let application = FindApplicationByClientId::new(&params.client_id)
         .execute(&mut tx)
-        .await?;
+        .await
+        .map_err(AuthorizeError::view)?;
     let Some(application) = application else {
-        return Err(ViewError::bad_request(
+        return Err(AuthorizeError::View(ViewError::not_found(
             "Application not found".into(),
             "There is no application defined with the provided client id.".into(),
-        ));
+        )));
     };
 
-    application
-        .check_redirect_uri(params.redirect_uri.as_ref())
-        .map_err(|err| {
-            ViewError::bad_request("Invalid authorization request".into(), err.into())
-        })?;
+    if !application.is_redirect_uri_matching(params.redirect_uri.as_ref()) {
+        return Err(AuthorizeError::Redirect(
+            params.redirect_uri,
+            ApiError::new(StatusCode::IM_A_TEAPOT, "redirect_uri_mismatch").with_description(
+                "The redirect_uri MUST match the registered callback URL for this application.",
+            ),
+        ));
+    }
 
     let request_id = CreateApplicationAuthorizationRequest::new(
         application.id,
@@ -57,13 +86,15 @@ pub(crate) async fn handler(
         params.redirect_uri.as_ref(),
     )
     .execute(&mut tx)
-    .await?;
+    .await
+    .map_err(AuthorizeError::view)?;
 
     let providers = ListProviderByApplicationId::new(application.id)
         .execute(&mut tx)
-        .await?;
+        .await
+        .map_err(AuthorizeError::view)?;
 
-    tx.commit().await?;
+    tx.commit().await.map_err(AuthorizeError::view)?;
 
     let ctx = AuthorizeTemplate {
         request_id,
@@ -81,6 +112,7 @@ mod tests {
     use crate::{settings::Settings, Server};
     use axum::body::Body;
     use axum::extract::Request;
+    use axum::http::header::LOCATION;
     use axum::http::StatusCode;
     use http_body_util::BodyExt;
     use tower::util::ServiceExt;
@@ -167,9 +199,59 @@ mod tests {
         let body = res.into_body().collect().await.unwrap().to_bytes();
         let body = String::from_utf8_lossy(&body[..]);
 
-        println!("body: {body}");
-
-        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert_eq!(status, StatusCode::NOT_FOUND);
         assert!(body.contains("Application not found"));
+    }
+
+    #[tokio::test]
+    #[serial_test::serial(database)]
+    async fn redirect_uri_mismatch() {
+        crate::init_logger();
+
+        let auth_uri = {
+            let client = oauth2::basic::BasicClient::new(
+                oauth2::ClientId::new("main-client-id".into()),
+                None,
+                oauth2::AuthUrl::new("http://authorize/authorize".into()).unwrap(),
+                None,
+            )
+            .set_redirect_uri(
+                oauth2::RedirectUrl::new("http://localhost:4444/api/wrong".into()).unwrap(),
+            );
+            // Generate a PKCE challenge.
+            let (pkce_challenge, _pkce_verifier) = oauth2::PkceCodeChallenge::new_random_sha256();
+
+            // Generate the full authorization URL.
+            let (auth_url, _csrf_token) = client
+                .authorize_url(oauth2::CsrfToken::new_random)
+                .set_pkce_challenge(pkce_challenge)
+                .url();
+            let auth_url = auth_url.to_string();
+            let auth_uri = auth_url.strip_prefix("http://authorize").unwrap();
+            auth_uri.to_string()
+        };
+
+        let app = Server::new(settings()).await.router();
+
+        let res = app
+            .oneshot(
+                Request::builder()
+                    .uri(auth_uri)
+                    .method("GET")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        let status = res.status();
+        let header = res
+            .headers()
+            .get(LOCATION)
+            .and_then(|h| String::from_utf8(h.as_bytes().to_vec()).ok())
+            .unwrap();
+
+        assert_eq!(status, StatusCode::TEMPORARY_REDIRECT);
+        assert_eq!(header, "http://localhost:4444/api/wrong?error=redirect_uri_mismatch&error_description=The+redirect_uri+MUST+match+the+registered+callback+URL+for+this+application.");
     }
 }

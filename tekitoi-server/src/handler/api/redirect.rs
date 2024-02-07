@@ -212,6 +212,9 @@ mod tests {
 
         let body = res.into_body().collect().await.unwrap().to_bytes();
         let body: serde_json::Value = serde_json::from_slice(&body).unwrap();
-        assert_eq!(body, serde_json::json!("unable to find request"));
+        assert_eq!(
+            body,
+            serde_json::json!({ "error": "unable to find request"})
+        );
     }
 }
