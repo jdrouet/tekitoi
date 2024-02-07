@@ -32,10 +32,10 @@ impl GithubProviderConfig {
         Url::parse("https://api.github.com").expect("couldn't parse github default base api url")
     }
 
-    pub(crate) fn provider_client(&self, access_token: String) -> Box<dyn super::ProviderClient> {
+    pub(crate) fn provider_client(self, access_token: String) -> Box<dyn super::ProviderClient> {
         Box::new(GithubProviderClient {
             access_token,
-            base_api_url: self.base_api_url.clone(),
+            base_api_url: self.base_api_url,
         })
     }
 }

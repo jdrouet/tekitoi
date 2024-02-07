@@ -32,10 +32,10 @@ impl GoogleProviderConfig {
             .expect("couldn't parse google default base api url")
     }
 
-    pub(crate) fn provider_client(&self, access_token: String) -> Box<dyn super::ProviderClient> {
+    pub(crate) fn provider_client(self, access_token: String) -> Box<dyn super::ProviderClient> {
         Box::new(GoogleProviderClient {
             access_token,
-            base_api_url: self.base_api_url.clone(),
+            base_api_url: self.base_api_url,
         })
     }
 }

@@ -30,12 +30,10 @@ impl std::fmt::Display for ViewError {
 
 impl IntoResponse for ViewError {
     fn into_response(self) -> Response {
-        let template = self
-            .clone()
-            .render_once()
-            .expect("couldn't render error page");
+        let code = self.code;
+        let template = self.render_once().expect("couldn't render error page");
 
-        (self.code, Html(template)).into_response()
+        (code, Html(template)).into_response()
     }
 }
 

@@ -29,10 +29,10 @@ impl GitlabProviderConfig {
         Url::parse("https://gitlab.com").expect("couldn't parse gitlab default base api url")
     }
 
-    pub(crate) fn provider_client(&self, access_token: String) -> Box<dyn super::ProviderClient> {
+    pub(crate) fn provider_client(self, access_token: String) -> Box<dyn super::ProviderClient> {
         Box::new(GitlabProviderClient {
             access_token,
-            base_api_url: self.base_api_url.clone(),
+            base_api_url: self.base_api_url,
         })
     }
 }
