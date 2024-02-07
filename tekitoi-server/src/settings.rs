@@ -19,7 +19,7 @@ pub struct Settings {
     #[serde(default)]
     database: DatabaseConfig,
     #[serde(default)]
-    pub applications: ApplicationCollectionConfig,
+    pub(crate) applications: ApplicationCollectionConfig,
     log_level: Option<String>,
 }
 

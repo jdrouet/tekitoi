@@ -9,6 +9,7 @@ use crate::service::database::DatabaseTransaction;
 
 pub(crate) struct Provider {
     pub id: Uuid,
+    #[allow(unused)]
     pub application_id: Uuid,
     pub name: String,
     pub label: Option<String>,

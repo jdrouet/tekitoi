@@ -6,6 +6,7 @@ use uuid::Uuid;
 
 use crate::service::database::DatabaseTransaction;
 
+#[allow(unused)]
 pub(crate) struct Application {
     pub id: Uuid,
     pub client_id: ClientId,
@@ -16,10 +17,6 @@ pub(crate) struct Application {
 }
 
 impl Application {
-    pub(crate) fn label_or_name(&self) -> &str {
-        self.label.as_deref().unwrap_or(self.name.as_str())
-    }
-
     pub(crate) fn is_redirect_uri_matching(&self, url: &Url) -> bool {
         &self.redirect_uri == url
     }

@@ -2,7 +2,7 @@ use std::net::SocketAddr;
 
 use axum::Extension;
 use tokio::net::TcpListener;
-use tower_http::trace::TraceLayer;
+use tower_http::{services::ServeDir, trace::TraceLayer};
 
 mod entity;
 mod handler;
@@ -25,6 +25,7 @@ fn init_logger() {
 
 pub struct Server {
     address: SocketAddr,
+    static_dir: ServeDir,
     base_url: service::BaseUrl,
     database: service::database::DatabasePool,
 }
@@ -47,6 +48,7 @@ impl Server {
             address,
             base_url,
             database,
+            static_dir: ServeDir::new(value.static_path()),
         }
     }
 }
@@ -65,9 +67,10 @@ impl Server {
             .route("/api/redirect", get(handler::api::redirect::handler))
             .route("/api/status", get(handler::api::status::handler))
             .route("/api/user", get(handler::api::user::handler))
-            .layer(TraceLayer::new_for_http())
             .layer(Extension(self.database))
             .layer(Extension(self.base_url))
+            .nest_service("/static", self.static_dir)
+            .layer(TraceLayer::new_for_http())
     }
 
     pub async fn listen(self) {
