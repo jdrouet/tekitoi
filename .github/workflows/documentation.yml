@@ -9,7 +9,7 @@ jobs:
   deploy:
     runs-on: ubuntu-20.04
     concurrency:
-      group: ${{ github.workflow }}-${{ github.ref }}
+      group: ${{ github.workflow }}-documentation-${{ github.ref }}
     steps:
       - name: pull the code
         uses: actions/checkout@v2

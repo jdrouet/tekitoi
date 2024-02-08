@@ -1,4 +1,7 @@
-use crate::service::client::{ClientManager, ClientManagerSettings};
+use crate::service::client::ApplicationCollectionConfig;
+use crate::service::database::DatabaseConfig;
+use crate::service::BaseUrl;
+use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::path::PathBuf;
 use std::str::FromStr;
 use tracing::Level;
@@ -7,21 +10,36 @@ use tracing_subscriber::FmtSubscriber;
 #[derive(Debug, serde::Deserialize)]
 pub struct Settings {
     #[serde(default = "Settings::default_host")]
-    host: String,
+    host: IpAddr,
     #[serde(default = "Settings::default_port")]
     port: u16,
     #[serde(default = "Settings::default_static_path")]
     static_path: PathBuf,
     base_url: Option<String>,
-    cache: deadpool_redis::Config,
-    log_level: Option<String>,
     #[serde(default)]
-    pub clients: ClientManagerSettings,
+    database: DatabaseConfig,
+    #[serde(default)]
+    pub(crate) applications: ApplicationCollectionConfig,
+    log_level: Option<String>,
+}
+
+impl Default for Settings {
+    fn default() -> Self {
+        Self {
+            host: Self::default_host(),
+            port: Self::default_port(),
+            static_path: Self::default_static_path(),
+            base_url: None,
+            database: Default::default(),
+            applications: Default::default(),
+            log_level: Some("INFO".into()),
+        }
+    }
 }
 
 impl Settings {
-    fn default_host() -> String {
-        "localhost".into()
+    fn default_host() -> IpAddr {
+        IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1))
     }
 
     fn default_port() -> u16 {
@@ -34,55 +52,39 @@ impl Settings {
 }
 
 impl Settings {
-    #[cfg(test)]
-    pub fn from_path(path: &str) -> Self {
-        let path = std::path::PathBuf::from(path);
-        config::Config::builder()
-            .add_source(config::File::from(path))
-            .add_source(config::Environment::default().separator("__"))
-            .build()
-            .expect("couldn't build settings")
-            .try_deserialize()
-            .expect("couldn't deserialize settings")
-    }
-
-    pub fn build(config_path: &Option<PathBuf>) -> Self {
-        let cfg = config::Config::builder();
+    pub fn build(config_path: Option<PathBuf>) -> Self {
+        let cfg = ::config::Config::builder();
         let cfg = match config_path {
-            Some(path) => cfg.add_source(config::File::from(path.clone())),
+            Some(path) => cfg.add_source(config::File::from(path)),
             None => cfg,
         };
-        cfg.add_source(config::Environment::default().separator("__"))
+        cfg.add_source(::config::Environment::default().separator("__"))
             .build()
             .expect("couldn't build settings")
             .try_deserialize()
             .expect("couldn't deserialize settings")
     }
 
-    pub fn address(&self) -> String {
-        format!("{}:{}", self.host, self.port)
+    pub fn address(&self) -> SocketAddr {
+        SocketAddr::from((self.host, self.port))
     }
 
-    pub fn build_cache_pool(&self) -> deadpool_redis::Pool {
-        tracing::trace!("creating cache pool with config {:?}", self.cache);
-        self.cache
-            .create_pool(Some(deadpool_redis::Runtime::Tokio1))
-            .expect("couldn't build cache pool")
+    pub(crate) async fn build_database_pool(&self) -> crate::service::database::DatabasePool {
+        self.database
+            .build()
+            .await
+            .expect("couldn't build database pool")
     }
 
-    fn base_url(&self) -> String {
-        self.base_url
-            .clone()
-            .unwrap_or_else(|| format!("http://{}:{}", self.host, self.port))
+    pub(crate) fn base_url(&self) -> BaseUrl {
+        BaseUrl::from(
+            self.base_url
+                .clone()
+                .unwrap_or_else(|| format!("http://{}:{}", self.host, self.port)),
+        )
     }
 
-    pub fn build_client_manager(&self) -> ClientManager {
-        self.clients
-            .build(self.base_url().as_str())
-            .expect("couldn't build client manager")
-    }
-
-    pub fn static_path(&self) -> &PathBuf {
+    pub(crate) fn static_path(&self) -> &PathBuf {
         &self.static_path
     }
 

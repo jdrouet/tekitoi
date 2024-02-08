@@ -1,6 +1,5 @@
-use actix_web::{get, HttpResponse};
+use axum::http::StatusCode;
 
-#[get("/api/status")]
-async fn handle() -> HttpResponse {
-    HttpResponse::NoContent().finish()
+pub(crate) async fn handler() -> StatusCode {
+    StatusCode::NO_CONTENT
 }

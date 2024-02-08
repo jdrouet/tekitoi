@@ -1,6 +1,7 @@
-use actix_web::http::header::ContentType;
-use actix_web::http::StatusCode;
-use actix_web::{HttpResponse, ResponseError};
+use axum::{
+    http::StatusCode,
+    response::{Html, IntoResponse, Response},
+};
 use sailfish::TemplateOnce;
 
 #[derive(Clone, Debug, TemplateOnce)]
@@ -12,9 +13,9 @@ pub struct ViewError {
 }
 
 impl ViewError {
-    pub fn bad_request(message: String, description: String) -> Self {
+    pub fn not_found(message: String, description: String) -> Self {
         Self {
-            code: StatusCode::BAD_REQUEST,
+            code: StatusCode::NOT_FOUND,
             message,
             description,
         }
@@ -27,15 +28,12 @@ impl std::fmt::Display for ViewError {
     }
 }
 
-impl ResponseError for ViewError {
-    fn error_response(&self) -> HttpResponse {
-        let template = self
-            .clone()
-            .render_once()
-            .expect("couldn't render error page");
-        HttpResponse::build(self.code)
-            .insert_header(ContentType::html())
-            .body(template)
+impl IntoResponse for ViewError {
+    fn into_response(self) -> Response {
+        let code = self.code;
+        let template = self.render_once().expect("couldn't render error page");
+
+        (code, Html(template)).into_response()
     }
 }
 
@@ -71,6 +69,16 @@ impl From<serde_qs::Error> for ViewError {
 
 impl From<serde_json::Error> for ViewError {
     fn from(error: serde_json::Error) -> Self {
+        ViewError {
+            code: StatusCode::INTERNAL_SERVER_ERROR,
+            message: "Unable to perform internal action.".into(),
+            description: error.to_string(),
+        }
+    }
+}
+
+impl From<sqlx::Error> for ViewError {
+    fn from(error: sqlx::Error) -> Self {
         ViewError {
             code: StatusCode::INTERNAL_SERVER_ERROR,
             message: "Unable to perform internal action.".into(),

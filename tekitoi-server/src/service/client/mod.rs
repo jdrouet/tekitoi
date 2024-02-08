@@ -1,210 +1,239 @@
+use crate::{
+    model::{
+        application::{DeleteOtherApplications, UpsertApplication},
+        provider::{DeleteOtherProviders, UpsertProvider},
+    },
+    service::database::{DatabasePool, DatabaseTransaction},
+};
+use oauth2::{AuthUrl, ClientId, ClientSecret, Scope, TokenUrl};
+use std::collections::HashMap;
+use url::Url;
+use uuid::Uuid;
+
+use self::{
+    github::GithubProviderConfig, gitlab::GitlabProviderConfig, google::GoogleProviderConfig,
+    oauth::OauthProviderConfig,
+};
+
 pub mod github;
 pub mod gitlab;
 pub mod google;
-
-use std::collections::{HashMap, HashSet};
-use url::Url;
+pub mod oauth;
 
 #[derive(Debug, Default, serde::Deserialize)]
-pub struct ClientManagerSettings(HashMap<String, ClientSettings>);
+pub(crate) struct ApplicationCollectionConfig(pub(crate) HashMap<String, ApplicationConfig>);
 
-impl ClientManagerSettings {
-    pub fn build(&self, base_url: &str) -> anyhow::Result<ClientManager> {
-        Ok(ClientManager(
-            self.0
-                .iter()
-                .map(|(name, item)| item.build(name.as_str(), base_url))
-                .collect::<anyhow::Result<HashMap<_, _>>>()?,
-        ))
+impl ApplicationCollectionConfig {
+    async fn delete_other_applications<'c>(
+        &self,
+        tx: &mut DatabaseTransaction<'c>,
+    ) -> Result<(), sqlx::Error> {
+        let names = self.0.keys().collect::<Vec<&String>>();
+        DeleteOtherApplications::new(&names).execute(tx).await?;
+        Ok(())
     }
-}
 
-pub struct ClientManager(HashMap<String, Client>);
+    async fn upsert_applications<'c>(
+        &self,
+        tx: &mut DatabaseTransaction<'c>,
+    ) -> Result<(), sqlx::Error> {
+        for (name, app) in self.0.iter() {
+            app.synchronize(tx, name.as_str()).await?;
+        }
 
-impl<'a> ClientManager {
-    pub fn get_client(&self, client_id: &str) -> Result<&Client, &'static str> {
-        self.0.get(client_id).ok_or("Client not found.")
+        Ok(())
+    }
+
+    pub(crate) async fn synchronize(&self, pool: &DatabasePool) -> Result<(), sqlx::Error> {
+        tracing::debug!("synchronize application collection");
+        let mut tx = pool.begin().await?;
+
+        self.delete_other_applications(&mut tx).await?;
+        self.upsert_applications(&mut tx).await?;
+
+        tx.commit().await
     }
 }
 
 #[derive(Debug, serde::Deserialize)]
-pub struct ClientSettings {
-    pub client_id: String,
-    pub client_secrets: HashSet<String>,
-    pub redirect_uri: Url,
+pub(crate) struct ApplicationConfig {
     #[serde(default)]
-    pub providers: ProviderManagerSettings,
-}
-
-impl ClientSettings {
-    pub fn build(&self, name: &str, base_url: &str) -> anyhow::Result<(String, Client)> {
-        let providers = self.providers.build(base_url)?;
-        Ok((
-            self.client_id.clone(),
-            Client {
-                name: name.to_string(),
-                client_secrets: self.client_secrets.clone(),
-                redirect_uri: self.redirect_uri.clone(),
-                providers,
-            },
-        ))
-    }
-}
-
-pub struct Client {
-    pub name: String,
-    pub client_secrets: HashSet<String>,
+    pub label: Option<String>,
     pub redirect_uri: Url,
-    pub providers: ProviderManager,
+    pub client_id: String,
+    pub client_secrets: Vec<String>,
+    #[serde(default)]
+    pub providers: ProviderCollectionConfig,
 }
 
-impl Client {
-    pub fn check_redirect_uri(&self, url: &Url) -> Result<(), &'static str> {
-        if &self.redirect_uri == url {
-            Ok(())
-        } else {
-            tracing::trace!(
-                "invalid redirect uri, expected {:?}, got {:?}",
-                self.redirect_uri.to_string(),
-                url.to_string()
-            );
-            Err("Invalid redirect uri.")
-        }
+impl ApplicationConfig {
+    pub async fn synchronize<'c>(
+        &self,
+        tx: &mut DatabaseTransaction<'c>,
+        name: &str,
+    ) -> Result<Uuid, sqlx::Error> {
+        tracing::debug!("synchronize application name={name:?}");
+
+        let application_id = UpsertApplication::new(
+            name,
+            self.label.as_deref(),
+            &self.client_id,
+            &self.client_secrets,
+            &self.redirect_uri,
+        )
+        .execute(tx)
+        .await?;
+
+        self.providers.synchronize(tx, application_id).await?;
+
+        Ok(application_id)
     }
 }
 
 #[derive(Debug, Default, serde::Deserialize)]
-pub struct ProviderManagerSettings {
-    github: Option<github::GithubProviderSettings>,
-    gitlab: Option<gitlab::GitlabProviderSettings>,
-    google: Option<google::GoogleProviderSettings>,
-}
+pub struct ProviderCollectionConfig(pub(crate) HashMap<String, ProviderConfig>);
 
-impl ProviderManagerSettings {
-    pub fn build(&self, base_url: &str) -> anyhow::Result<ProviderManager> {
-        let mut res = HashMap::<&'static str, Provider>::new();
-        if let Some(item) = self.github.as_ref() {
-            let provider = item.build(base_url)?;
-            res.insert(github::KIND, provider.into());
-        }
-        if let Some(item) = self.gitlab.as_ref() {
-            let provider = item.build(base_url)?;
-            res.insert(gitlab::KIND, provider.into());
-        }
-        if let Some(item) = self.google.as_ref() {
-            let provider = item.build(base_url)?;
-            res.insert(google::KIND, provider.into());
-        }
-        Ok(ProviderManager(res))
-    }
-}
-
-#[derive(Debug, Default)]
-pub struct ProviderManager(HashMap<&'static str, Provider>);
-
-impl ProviderManager {
-    pub fn get(&self, kind: &str) -> Option<&Provider> {
-        self.0.get(kind)
-    }
-
-    pub fn names(&self) -> Vec<&'static str> {
-        self.0.keys().copied().collect()
-    }
-}
-
-#[derive(Debug)]
-pub enum Provider {
-    Github(github::GithubProvider),
-    Gitlab(gitlab::GitlabProvider),
-    Google(google::GoogleProvider),
-}
-
-impl From<github::GithubProvider> for Provider {
-    fn from(value: github::GithubProvider) -> Self {
-        Self::Github(value)
-    }
-}
-
-impl From<gitlab::GitlabProvider> for Provider {
-    fn from(value: gitlab::GitlabProvider) -> Self {
-        Self::Gitlab(value)
-    }
-}
-
-impl From<google::GoogleProvider> for Provider {
-    fn from(value: google::GoogleProvider) -> Self {
-        Self::Google(value)
-    }
-}
-
-impl Provider {
-    pub fn get_oauth_client(&self) -> &oauth2::basic::BasicClient {
-        match self {
-            Self::Github(item) => item.get_oauth_client(),
-            Self::Gitlab(item) => item.get_oauth_client(),
-            Self::Google(item) => item.get_oauth_client(),
-        }
-    }
-
-    pub fn with_oauth_scopes<'a>(
+impl ProviderCollectionConfig {
+    async fn delete_other_providers<'c>(
         &self,
-        req: oauth2::AuthorizationRequest<'a>,
-    ) -> oauth2::AuthorizationRequest<'a> {
-        self.get_oauth_scopes().iter().fold(req, |r, scope| {
-            r.add_scope(oauth2::Scope::new(scope.clone()))
+        tx: &mut DatabaseTransaction<'c>,
+        application_id: Uuid,
+    ) -> Result<(), sqlx::Error> {
+        let names = self.0.keys().collect::<Vec<&String>>();
+        DeleteOtherProviders::new(application_id, &names)
+            .execute(tx)
+            .await?;
+        Ok(())
+    }
+
+    async fn upsert_providers<'c>(
+        &self,
+        tx: &mut DatabaseTransaction<'c>,
+        application_id: Uuid,
+    ) -> Result<(), sqlx::Error> {
+        for (name, provider) in self.0.iter() {
+            provider
+                .synchronize(tx, application_id, name.as_str())
+                .await?;
+        }
+
+        Ok(())
+    }
+
+    pub async fn synchronize<'c>(
+        &self,
+        tx: &mut DatabaseTransaction<'c>,
+        application_id: Uuid,
+    ) -> Result<(), sqlx::Error> {
+        tracing::debug!("synchronize provider collection");
+
+        self.delete_other_providers(tx, application_id).await?;
+        self.upsert_providers(tx, application_id).await?;
+
+        Ok(())
+    }
+}
+
+#[derive(Debug, serde::Deserialize)]
+pub struct ProviderConfig {
+    #[serde(default)]
+    pub label: Option<String>,
+    #[serde(flatten)]
+    pub inner: ProviderInnerConfig,
+}
+
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
+#[serde(tag = "type", rename_all = "kebab-case")]
+pub(crate) enum ProviderInnerConfig {
+    Github(GithubProviderConfig),
+    Gitlab(GitlabProviderConfig),
+    Google(GoogleProviderConfig),
+    Oauth(OauthProviderConfig),
+}
+
+impl ProviderInnerConfig {
+    pub fn oauth_scopes(&self) -> Vec<oauth2::Scope> {
+        match self {
+            Self::Github(inner) => inner.scopes.iter().map(|s| Scope::new(s.clone())).collect(),
+            Self::Gitlab(inner) => inner.scopes.iter().map(|s| Scope::new(s.clone())).collect(),
+            Self::Google(inner) => inner.scopes.iter().map(|s| Scope::new(s.clone())).collect(),
+            Self::Oauth(inner) => inner.scopes.iter().map(|s| Scope::new(s.clone())).collect(),
+        }
+    }
+
+    pub fn oauth_client(&self) -> oauth2::basic::BasicClient {
+        oauth2::basic::BasicClient::new(
+            self.client_id(),
+            self.client_secret(),
+            self.authorization_url(),
+            self.token_url(),
+        )
+    }
+
+    pub(crate) fn provider_client(self, access_token: String) -> Box<dyn ProviderClient> {
+        match self {
+            Self::Oauth(inner) => inner.provider_client(access_token),
+            Self::Github(inner) => inner.provider_client(access_token),
+            Self::Gitlab(inner) => inner.provider_client(access_token),
+            Self::Google(inner) => inner.provider_client(access_token),
+        }
+    }
+
+    fn client_id(&self) -> ClientId {
+        ClientId::new(match self {
+            Self::Oauth(inner) => inner.client_id.clone(),
+            Self::Github(inner) => inner.client_id.clone(),
+            Self::Gitlab(inner) => inner.client_id.clone(),
+            Self::Google(inner) => inner.client_id.clone(),
         })
     }
 
-    pub fn get_oauth_scopes(&self) -> &Vec<String> {
-        match self {
-            Self::Github(item) => item.get_oauth_scopes(),
-            Self::Gitlab(item) => item.get_oauth_scopes(),
-            Self::Google(item) => item.get_oauth_scopes(),
-        }
+    fn client_secret(&self) -> Option<ClientSecret> {
+        Some(ClientSecret::new(match self {
+            Self::Oauth(inner) => inner.client_secret.clone(),
+            Self::Github(inner) => inner.client_secret.clone(),
+            Self::Gitlab(inner) => inner.client_secret.clone(),
+            Self::Google(inner) => inner.client_secret.clone(),
+        }))
     }
 
-    pub fn get_api_client<'a>(&self, access_token: &'a str) -> ProviderClient<'a> {
-        match self {
-            Self::Github(item) => item.get_api_client(access_token).into(),
-            Self::Gitlab(item) => item.get_api_client(access_token).into(),
-            Self::Google(item) => item.get_api_client(access_token).into(),
-        }
+    fn authorization_url(&self) -> AuthUrl {
+        AuthUrl::from_url(match self {
+            Self::Oauth(inner) => inner.authorization_url.clone(),
+            Self::Github(inner) => inner.authorization_url.clone(),
+            Self::Gitlab(inner) => inner.authorization_url.clone(),
+            Self::Google(inner) => inner.authorization_url.clone(),
+        })
     }
-}
 
-#[derive(Debug)]
-pub enum ProviderClient<'a> {
-    Github(github::GithubProviderClient<'a>),
-    Gitlab(gitlab::GitlabProviderClient<'a>),
-    Google(google::GoogleProviderClient<'a>),
-}
-
-impl<'a> From<github::GithubProviderClient<'a>> for ProviderClient<'a> {
-    fn from(value: github::GithubProviderClient<'a>) -> Self {
-        Self::Github(value)
+    fn token_url(&self) -> Option<TokenUrl> {
+        Some(TokenUrl::from_url(match self {
+            Self::Oauth(inner) => inner.token_url.clone(),
+            Self::Github(inner) => inner.token_url.clone(),
+            Self::Gitlab(inner) => inner.token_url.clone(),
+            Self::Google(inner) => inner.token_url.clone(),
+        }))
     }
 }
 
-impl<'a> From<gitlab::GitlabProviderClient<'a>> for ProviderClient<'a> {
-    fn from(value: gitlab::GitlabProviderClient<'a>) -> Self {
-        Self::Gitlab(value)
+impl ProviderConfig {
+    pub async fn synchronize<'c>(
+        &self,
+        tx: &mut DatabaseTransaction<'c>,
+        application_id: Uuid,
+        name: &str,
+    ) -> Result<Uuid, sqlx::Error> {
+        tracing::debug!("synchronize provider name={name:?}");
+
+        UpsertProvider::new(application_id, name, self.label.as_deref(), &self.inner)
+            .execute(tx)
+            .await
     }
 }
 
-impl<'a> From<google::GoogleProviderClient<'a>> for ProviderClient<'a> {
-    fn from(value: google::GoogleProviderClient<'a>) -> Self {
-        Self::Google(value)
-    }
-}
-
-impl<'a> ProviderClient<'a> {
-    pub async fn fetch_user(&self) -> Result<ProviderUser, String> {
-        match self {
-            Self::Github(client) => client.fetch_user().await.map(Into::into),
-            Self::Gitlab(client) => client.fetch_user().await.map(Into::into),
-            Self::Google(client) => client.fetch_user().await.map(Into::into),
-        }
-    }
+#[axum::async_trait]
+pub(crate) trait ProviderClient: std::fmt::Debug + Send {
+    async fn fetch_user(&self) -> Result<ProviderUser, String>;
 }
 
 #[derive(Debug, serde::Serialize)]
@@ -213,6 +242,7 @@ pub enum ProviderUser {
     Github(github::GithubUser),
     Gitlab(gitlab::GitlabUser),
     Google(google::GoogleUser),
+    Oauth(oauth::OauthUser),
 }
 
 impl From<github::GithubUser> for ProviderUser {
@@ -230,5 +260,11 @@ impl From<gitlab::GitlabUser> for ProviderUser {
 impl From<google::GoogleUser> for ProviderUser {
     fn from(value: google::GoogleUser) -> Self {
         Self::Google(value)
+    }
+}
+
+impl From<oauth::OauthUser> for ProviderUser {
+    fn from(value: oauth::OauthUser) -> Self {
+        Self::Oauth(value)
     }
 }

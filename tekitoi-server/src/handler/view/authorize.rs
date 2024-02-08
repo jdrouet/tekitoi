@@ -1,122 +1,126 @@
 use super::error::ViewError;
-use crate::handler::api::prelude::CachePayload;
-use crate::service::cache::Pool as CachePool;
-use crate::service::client::ClientManager;
-use actix_web::http::header::ContentType;
-use actix_web::{get, web::Data, web::Query, HttpResponse};
-use deadpool_redis::redis;
-use oauth2::CsrfToken;
+use crate::entity::{AuthorizationError, AuthorizationState, RedirectUri};
+use crate::model::provider::{ListProviderByApplicationId, Provider};
+use crate::model::{
+    application::FindApplicationByClientId,
+    application_authorization_request::CreateApplicationAuthorizationRequest,
+};
+use crate::service::database::DatabasePool;
+use axum::extract::Query;
+use axum::response::{Html, IntoResponse, Response};
+use axum::Extension;
+use oauth2::{ClientId, PkceCodeChallenge};
 use sailfish::TemplateOnce;
-use url::Url;
+use uuid::Uuid;
 
-// response_type=code
-// client_id=
-// code_challenge=
-// code_challenge_method=
-// state=
-// redirect_uri=
-
-// TODO add response_type with an enum
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
-pub struct InitialAuthorizationRequest {
-    pub client_id: String,
-    pub code_challenge: String,
-    pub code_challenge_method: String,
-    pub state: String,
-    pub redirect_uri: Url,
+#[derive(Debug, serde::Deserialize)]
+pub(crate) struct AuthorizationRequest {
+    client_id: ClientId,
+    #[serde(flatten)]
+    code_challenge: PkceCodeChallenge,
+    state: AuthorizationState,
+    redirect_uri: RedirectUri,
 }
-
-impl CachePayload for InitialAuthorizationRequest {}
 
 #[derive(TemplateOnce)]
 #[template(path = "authorize.html")]
-struct AuthorizeTemplate<'a> {
-    state: &'a str,
-    providers: Vec<&'static str>,
+struct AuthorizeTemplate {
+    request_id: Uuid,
+    providers: Vec<Provider>,
 }
 
-#[get("/authorize")]
-async fn handle(
-    clients: Data<ClientManager>,
-    cache: Data<CachePool>,
-    params: Query<InitialAuthorizationRequest>,
-) -> Result<HttpResponse, ViewError> {
-    tracing::trace!("authorization page requested");
-    let client = clients
-        .get_client(params.client_id.as_str())
-        .map_err(|err| {
-            ViewError::bad_request("Invalid authorization request".into(), err.into())
-        })?;
-    client
-        .check_redirect_uri(&params.redirect_uri)
-        .map_err(|err| {
-            ViewError::bad_request("Invalid authorization request".into(), err.into())
-        })?;
-    let csrf_token = CsrfToken::new_random();
-    let mut cache_conn = cache.get().await?;
-    redis::cmd("SETEX")
-        .arg(csrf_token.secret())
-        .arg(60i32 * 10)
-        .arg(params.to_query_string()?)
-        .query_async(&mut cache_conn)
-        .await?;
+pub(crate) enum AuthorizeError {
+    View(ViewError),
+    Redirect(RedirectUri, AuthorizationError),
+}
+
+impl AuthorizeError {
+    fn view<T: Into<ViewError>>(value: T) -> Self {
+        Self::View(value.into())
+    }
+}
+
+impl IntoResponse for AuthorizeError {
+    fn into_response(self) -> Response {
+        match self {
+            Self::View(inner) => inner.into_response(),
+            Self::Redirect(uri, err) => err.as_redirect(uri.inner()).into_response(),
+        }
+    }
+}
+
+pub(crate) async fn handler(
+    Extension(db_pool): Extension<DatabasePool>,
+    Query(params): Query<AuthorizationRequest>,
+) -> Result<Html<String>, AuthorizeError> {
+    let mut tx = db_pool.begin().await.map_err(AuthorizeError::view)?;
+
+    // If the client_id doesn't match any application, then we can just display a "not found" page.
+    let application = FindApplicationByClientId::new(&params.client_id)
+        .execute(&mut tx)
+        .await
+        .map_err(AuthorizeError::view)?;
+    let Some(application) = application else {
+        return Err(AuthorizeError::View(ViewError::not_found(
+            "Application not found".into(),
+            "There is no application defined with the provided client id.".into(),
+        )));
+    };
+
+    if !application.is_redirect_uri_matching(params.redirect_uri.as_ref()) {
+        return Err(AuthorizeError::Redirect(
+            params.redirect_uri,
+            AuthorizationError::create_redirect_uri_mismatch().with_state(params.state.inner()),
+        ));
+    }
+
+    let request_id = CreateApplicationAuthorizationRequest::new(
+        application.id,
+        params.code_challenge.as_str(),
+        params.code_challenge.method().as_str(),
+        params.state.as_ref(),
+        params.redirect_uri.as_ref(),
+    )
+    .execute(&mut tx)
+    .await
+    .map_err(AuthorizeError::view)?;
+
+    let providers = ListProviderByApplicationId::new(application.id)
+        .execute(&mut tx)
+        .await
+        .map_err(AuthorizeError::view)?;
+
+    tx.commit().await.map_err(AuthorizeError::view)?;
+
     let ctx = AuthorizeTemplate {
-        state: csrf_token.secret(),
-        providers: client.providers.names(),
+        request_id,
+        providers,
     };
     let template = ctx.render_once().unwrap();
-    Ok(HttpResponse::Ok()
-        .insert_header(ContentType::html())
-        .body(template))
+
+    Ok(Html(template))
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::tests::TestServer;
-    use actix_web::http::StatusCode;
+    use std::collections::HashMap;
+    use std::path::PathBuf;
 
-    #[actix_web::test]
-    async fn basic() {
-        let client = oauth2::basic::BasicClient::new(
-            oauth2::ClientId::new("main-client-id".into()),
-            None,
-            oauth2::AuthUrl::new("http://authorize/authorize".into()).unwrap(),
-            None,
-        )
-        .set_redirect_uri(
-            oauth2::RedirectUrl::new("http://localhost:4444/api/redirect".into()).unwrap(),
-        );
-        // Generate a PKCE challenge.
-        let (pkce_challenge, _pkce_verifier) = oauth2::PkceCodeChallenge::new_random_sha256();
+    use crate::{settings::Settings, Server};
+    use axum::body::Body;
+    use axum::extract::Request;
+    use axum::http::header::LOCATION;
+    use axum::http::StatusCode;
+    use http_body_util::BodyExt;
+    use tower::util::ServiceExt;
 
-        // Generate the full authorization URL.
-        let (auth_url, _csrf_token) = client
-            .authorize_url(oauth2::CsrfToken::new_random)
-            // Set the desired scopes.
-            // .add_scope(Scope::new("read".to_string()))
-            // .add_scope(Scope::new("write".to_string()))
-            // Set the PKCE code challenge.
-            .set_pkce_challenge(pkce_challenge)
-            .url();
-        let auth_url = auth_url.to_string();
-        let auth_uri = auth_url.strip_prefix("http://authorize").unwrap();
-        let req = actix_web::test::TestRequest::get()
-            .uri(auth_uri)
-            .to_request();
-        let srv = TestServer::from_simple();
-        let res = srv.execute(req).await;
-        assert_eq!(res.status(), StatusCode::OK);
-        let body = actix_web::test::read_body(res).await;
-        let payload = std::str::from_utf8(&body).unwrap();
-        assert!(payload.contains("github"));
-        let re = regex::Regex::new("\"/api/authorize/github/(.*)\"").unwrap();
-        assert!(re.find(payload).is_some());
+    fn settings() -> Settings {
+        Settings::build(Some(PathBuf::from("./tests/simple.toml")))
     }
 
-    #[actix_web::test]
-    async fn client_not_found() {
+    fn create_auth_uri(client_id: &str) -> String {
         let client = oauth2::basic::BasicClient::new(
-            oauth2::ClientId::new("unknown-client-id".into()),
+            oauth2::ClientId::new(client_id.into()),
             None,
             oauth2::AuthUrl::new("http://authorize/authorize".into()).unwrap(),
             None,
@@ -130,22 +134,134 @@ mod tests {
         // Generate the full authorization URL.
         let (auth_url, _csrf_token) = client
             .authorize_url(oauth2::CsrfToken::new_random)
-            // Set the desired scopes.
-            // .add_scope(Scope::new("read".to_string()))
-            // .add_scope(Scope::new("write".to_string()))
-            // Set the PKCE code challenge.
             .set_pkce_challenge(pkce_challenge)
             .url();
         let auth_url = auth_url.to_string();
         let auth_uri = auth_url.strip_prefix("http://authorize").unwrap();
-        let req = actix_web::test::TestRequest::get()
-            .uri(auth_uri)
-            .to_request();
-        let srv = TestServer::from_simple();
-        let res = srv.execute(req).await;
-        assert_eq!(res.status(), StatusCode::BAD_REQUEST);
-        let body = actix_web::test::read_body(res).await;
-        let payload = std::str::from_utf8(&body).unwrap();
-        assert!(payload.contains("Client not found."));
+        auth_uri.to_string()
+    }
+
+    #[tokio::test]
+    #[serial_test::serial(database)]
+    async fn simple() {
+        crate::init_logger();
+
+        let auth_uri = create_auth_uri("main-client-id");
+
+        let app = Server::new(settings()).await.router();
+
+        let res = app
+            .oneshot(
+                Request::builder()
+                    .uri(auth_uri)
+                    .method("GET")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        let status = res.status();
+        let body = res.into_body().collect().await.unwrap().to_bytes();
+        let body = String::from_utf8_lossy(&body[..]);
+
+        assert_eq!(status, StatusCode::OK);
+        assert!(body.contains("Connect with github"));
+
+        let re = regex::Regex::new("\"/api/authorize/(.*)/(.*)\"").unwrap();
+        assert!(re.find(&body).is_some());
+    }
+
+    #[tokio::test]
+    #[serial_test::serial(database)]
+    async fn client_not_found() {
+        crate::init_logger();
+
+        let auth_uri = create_auth_uri("unknown-client-id");
+
+        let app = Server::new(settings()).await.router();
+
+        let res = app
+            .oneshot(
+                Request::builder()
+                    .uri(auth_uri)
+                    .method("GET")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        let status = res.status();
+        let body = res.into_body().collect().await.unwrap().to_bytes();
+        let body = String::from_utf8_lossy(&body[..]);
+
+        assert_eq!(status, StatusCode::NOT_FOUND);
+        assert!(body.contains("Application not found"));
+    }
+
+    #[tokio::test]
+    #[serial_test::serial(database)]
+    async fn redirect_uri_mismatch() {
+        crate::init_logger();
+
+        let (auth_uri, csrf_token) = {
+            let client = oauth2::basic::BasicClient::new(
+                oauth2::ClientId::new("main-client-id".into()),
+                None,
+                oauth2::AuthUrl::new("http://authorize/authorize".into()).unwrap(),
+                None,
+            )
+            .set_redirect_uri(
+                oauth2::RedirectUrl::new("http://localhost:4444/api/wrong".into()).unwrap(),
+            );
+            // Generate a PKCE challenge.
+            let (pkce_challenge, _pkce_verifier) = oauth2::PkceCodeChallenge::new_random_sha256();
+
+            // Generate the full authorization URL.
+            let (auth_url, csrf_token) = client
+                .authorize_url(oauth2::CsrfToken::new_random)
+                .set_pkce_challenge(pkce_challenge)
+                .url();
+            let auth_url = auth_url.to_string();
+            let auth_uri = auth_url.strip_prefix("http://authorize").unwrap();
+            (auth_uri.to_string(), csrf_token)
+        };
+
+        let app = Server::new(settings()).await.router();
+
+        let res = app
+            .oneshot(
+                Request::builder()
+                    .uri(auth_uri)
+                    .method("GET")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        let status = res.status();
+        assert_eq!(status, StatusCode::TEMPORARY_REDIRECT);
+
+        let header = res
+            .headers()
+            .get(LOCATION)
+            .and_then(|h| String::from_utf8(h.as_bytes().to_vec()).ok())
+            .unwrap();
+        let location = url::Url::parse(header.as_str()).unwrap();
+        assert_eq!(location.host_str().unwrap(), "localhost");
+        assert_eq!(location.port().unwrap(), 4444);
+        assert_eq!(location.path(), "/api/wrong");
+        let qp = location
+            .query_pairs()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect::<HashMap<_, _>>();
+        assert_eq!(qp.get("error").unwrap(), "redirect_uri_mismatch");
+        assert_eq!(
+            qp.get("error_description").unwrap(),
+            "The redirect_uri MUST match the registered callback URL for this application."
+        );
+        assert_eq!(qp.get("state").unwrap(), csrf_token.secret());
     }
 }

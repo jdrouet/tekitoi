@@ -1,13 +1,14 @@
-use actix_web::{get, http::header::LOCATION, web::Data, HttpResponse};
+use axum::extract::State;
+use axum::response::Redirect;
+use axum::Extension;
 use oauth2::basic::BasicClient;
 use oauth2::{CsrfToken, PkceCodeChallenge};
-use redis::AsyncCommands;
 
-#[get("/api/authorize")]
-async fn handler(
-    oauth_client: Data<BasicClient>,
-    redis_client: Data<redis::Client>,
-) -> HttpResponse {
+// #[get("/api/authorize")]
+pub async fn handler(
+    Extension(oauth_client): Extension<BasicClient>,
+    State(cache): State<crate::settings::LocalCache>,
+) -> Redirect {
     tracing::trace!("authorize requested");
     // Generate a PKCE challenge.
     let (pkce_challenge, pkce_verifier) = PkceCodeChallenge::new_random_sha256();
@@ -23,18 +24,9 @@ async fn handler(
         csrf_token.secret(),
         pkce_verifier.secret()
     );
-    let mut redis_con = redis_client
-        .get_async_connection()
-        .await
-        .expect("couldn't get redis connection");
-    let _: String = redis_con
-        .set_ex(csrf_token.secret(), pkce_verifier.secret(), 60 * 10)
-        .await
-        .expect("couldn't persist in cache");
+    cache.set(csrf_token, pkce_verifier).await;
 
-    tracing::trace!("redirecting to {:?}", auth_url);
+    tracing::debug!("redirecting to {:?}", auth_url);
 
-    HttpResponse::Found()
-        .append_header((LOCATION, auth_url.to_string()))
-        .finish()
+    Redirect::temporary(auth_url.as_str())
 }

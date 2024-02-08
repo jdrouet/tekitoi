@@ -1,7 +1,6 @@
-use actix_web::{get, HttpResponse};
+use axum::http::StatusCode;
 
-#[get("/api/status")]
-async fn handler() -> HttpResponse {
+pub async fn handler() -> StatusCode {
     tracing::trace!("status requested");
-    HttpResponse::NoContent().finish()
+    StatusCode::NO_CONTENT
 }

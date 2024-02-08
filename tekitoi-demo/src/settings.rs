@@ -1,15 +1,14 @@
+use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+
 use oauth2::basic::BasicClient;
-use oauth2::{AuthUrl, ClientId, ClientSecret, RedirectUrl, TokenUrl};
+use oauth2::{AuthUrl, ClientId, ClientSecret, CsrfToken, PkceCodeVerifier, RedirectUrl, TokenUrl};
 
 #[derive(Debug, serde::Deserialize)]
 pub struct Settings {
     #[serde(default = "Settings::default_host")]
-    host: String,
+    host: IpAddr,
     #[serde(default = "Settings::default_port")]
     port: u16,
-    //
-    #[serde(default = "Settings::default_redis_url")]
-    redis_url: String,
     //
     #[serde(default = "Settings::default_client_id")]
     client_id: String,
@@ -25,16 +24,12 @@ pub struct Settings {
 }
 
 impl Settings {
-    fn default_host() -> String {
-        "localhost".into()
+    fn default_host() -> IpAddr {
+        IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1))
     }
 
     fn default_port() -> u16 {
         8080
-    }
-
-    fn default_redis_url() -> String {
-        "redis://localhost".into()
     }
 
     fn default_client_id() -> String {
@@ -60,15 +55,16 @@ impl Settings {
 
 impl Settings {
     pub fn build() -> Self {
-        config::Config::new()
-            .with_merged(config::Environment::new())
+        config::Config::builder()
+            .add_source(config::Environment::default())
+            .build()
             .expect("couldn't merge with environment")
-            .try_into()
+            .try_deserialize()
             .expect("couldn't build settings")
     }
 
-    pub fn address(&self) -> String {
-        format!("{}:{}", self.host, self.port)
+    pub fn address(&self) -> SocketAddr {
+        SocketAddr::from((self.host, self.port))
     }
 
     pub fn base_url(&self) -> String {
@@ -81,8 +77,8 @@ impl Settings {
         format!("{}/api/redirect", self.base_url())
     }
 
-    pub fn redis_client(&self) -> redis::Client {
-        redis::Client::open(self.redis_url.as_str()).expect("couldn't build redis client")
+    pub fn cache(&self) -> LocalCache {
+        LocalCache(moka::future::Cache::builder().build())
     }
 
     pub fn oauth_client(&self) -> BasicClient {
@@ -94,5 +90,23 @@ impl Settings {
         )
         // Set the URL the user will be redirected to after the authorization process.
         .set_redirect_uri(RedirectUrl::new(self.redirect_url()).expect("invalid redirect url"))
+    }
+}
+
+#[derive(Clone)]
+pub struct LocalCache(moka::future::Cache<String, String>);
+
+impl LocalCache {
+    pub async fn set(&self, key: CsrfToken, value: PkceCodeVerifier) {
+        self.0
+            .insert(key.secret().to_string(), value.secret().to_string())
+            .await;
+    }
+
+    pub async fn get(&self, key: &str) -> Option<PkceCodeVerifier> {
+        self.0
+            .get(key)
+            .await
+            .map(|inner| PkceCodeVerifier::new(inner.to_string()))
     }
 }

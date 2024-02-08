@@ -1,156 +1,156 @@
 use super::error::ApiError;
-use super::prelude::CachePayload;
-use crate::handler::view::authorize::InitialAuthorizationRequest;
-use crate::service::cache::Pool as CachePool;
-use crate::service::client::ClientManager;
-use actix_web::{get, http::header::LOCATION, web::Data, web::Path, HttpResponse};
-use deadpool_redis::redis;
-use oauth2::{CsrfToken, PkceCodeChallenge, PkceCodeVerifier};
+use crate::model::provider::FindProviderForApplicationAuthorizationRequest;
+use crate::model::provider_authorization_request::CreateProviderAuthorizationRequest;
+use crate::service::database::DatabasePool;
+use crate::service::BaseUrl;
+use axum::{extract::Path, response::Redirect, Extension};
+use uuid::Uuid;
 
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
-pub struct AuthorizationRequest {
-    pub initial: InitialAuthorizationRequest,
-    pub pkce_verifier: PkceCodeVerifier,
-}
+pub(crate) async fn handler(
+    Extension(base_url): Extension<BaseUrl>,
+    Extension(pool): Extension<DatabasePool>,
+    Path((request_id, provider_id)): Path<(Uuid, Uuid)>,
+) -> Result<Redirect, ApiError> {
+    let mut tx = pool.begin().await?;
 
-impl CachePayload for AuthorizationRequest {}
-
-#[get("/api/authorize/{kind}/{state}")]
-async fn handle(
-    clients: Data<ClientManager>,
-    cache: Data<CachePool>,
-    path: Path<(String, String)>,
-) -> Result<HttpResponse, ApiError> {
-    let (kind, state) = path.into_inner();
-    tracing::trace!(
-        "authorization redirection kind={:?} state={:?}",
-        kind,
-        state
-    );
-    let mut cache_conn = cache.get().await?;
-    let initial_str: Option<String> = redis::cmd("GETDEL")
-        .arg(state.as_str())
-        .query_async(&mut cache_conn)
-        .await?;
-    let initial_str = initial_str.ok_or_else(|| ApiError::bad_request("state not found"))?;
-    let initial = InitialAuthorizationRequest::from_query_string(&initial_str)?;
     // build oauth client
-    let client = clients
-        .get_client(initial.client_id.as_str())
-        .map_err(ApiError::bad_request)?;
-    let provider = client
-        .providers
-        .get(kind.as_str())
-        .ok_or_else(|| ApiError::bad_request("provider not found"))?;
-    let oauth_client = provider.get_oauth_client();
-    // Generate a PKCE challenge.
-    let (pkce_challenge, pkce_verifier) = PkceCodeChallenge::new_random_sha256();
-    // Generate the full authorization URL.
-    let (auth_url, csrf_token) = provider
-        .with_oauth_scopes(oauth_client.authorize_url(CsrfToken::new_random))
-        // Set the PKCE code challenge.
-        .set_pkce_challenge(pkce_challenge)
-        .url();
-
-    let auth_request = AuthorizationRequest {
-        initial,
-        pkce_verifier,
-    };
-    let auth_request = auth_request.to_query_string()?;
-    redis::cmd("SETEX")
-        .arg(csrf_token.secret())
-        .arg(60i32 * 10)
-        .arg(auth_request)
-        .query_async(&mut cache_conn)
+    let provider = FindProviderForApplicationAuthorizationRequest::new(request_id, provider_id)
+        .execute(&mut tx)
         .await?;
+    let Some(provider) = provider else {
+        return Err(ApiError::bad_request("provider not found"));
+    };
+
+    let (auth_url, csrf_token, pkce_verifier) =
+        provider.oauth_authorization_request(base_url.as_ref());
+
+    CreateProviderAuthorizationRequest::new(
+        request_id,
+        provider_id,
+        csrf_token.secret(),
+        pkce_verifier.secret(),
+    )
+    .execute(&mut tx)
+    .await?;
 
     let auth_url = auth_url.to_string();
 
-    tracing::trace!("redirect to {:?} authorization page: {:?}", kind, auth_url);
-    Ok(HttpResponse::Found()
-        .append_header((LOCATION, auth_url))
-        .finish())
+    tx.commit().await?;
+
+    Ok(Redirect::temporary(&auth_url))
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::handler::api::prelude::CachePayload;
-    use crate::handler::view::authorize::InitialAuthorizationRequest;
-    use crate::tests::TestServer;
-    use actix_web::http::{header::LOCATION, StatusCode};
-    use deadpool_redis::redis;
-    use url::Url;
+    use crate::model::application::FindApplicationByClientId;
+    use crate::model::application_authorization_request::CreateApplicationAuthorizationRequest;
+    use crate::model::provider::ListProviderByApplicationId;
+    use crate::{settings::Settings, Server};
+    use axum::body::Body;
+    use axum::extract::Request;
+    use axum::http::header::LOCATION;
+    use axum::http::StatusCode;
+    use http_body_util::BodyExt;
+    use oauth2::CsrfToken;
+    use std::collections::HashMap;
+    use std::path::PathBuf;
+    use tower::util::ServiceExt;
+    use uuid::Uuid;
 
-    #[actix_web::test]
-    async fn unknown_state() {
-        let req = actix_web::test::TestRequest::get()
-            .uri("/api/authorize/github/whatever")
-            .to_request();
-        let srv = TestServer::from_simple();
-        let res = srv.execute(req).await;
-        assert_eq!(res.status(), StatusCode::BAD_REQUEST);
-        let body: String = actix_web::test::read_body_json(res).await;
-        assert_eq!(body, "state not found");
+    fn settings() -> Settings {
+        Settings::build(Some(PathBuf::from("./tests/simple.toml")))
     }
 
-    #[actix_web::test]
+    #[tokio::test]
+    #[serial_test::serial(database)]
+    async fn unknown_request_id() {
+        crate::init_logger();
+
+        let app = Server::new(settings()).await.router();
+
+        let request_id = Uuid::new_v4();
+        let provider_id = Uuid::new_v4();
+
+        let res = app
+            .oneshot(
+                Request::builder()
+                    .uri(&format!("/api/authorize/{request_id}/{provider_id}"))
+                    .method("GET")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(res.status(), StatusCode::BAD_REQUEST);
+
+        let body = res.into_body().collect().await.unwrap().to_bytes();
+        let body: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(body, serde_json::json!({ "error": "provider not found" }));
+    }
+
+    #[tokio::test]
+    #[serial_test::serial(database)]
     async fn valid_provider() {
-        let srv = TestServer::from_simple();
-        let initial = InitialAuthorizationRequest {
-            client_id: "main-client-id".into(),
-            code_challenge: "code-challenge".into(),
-            code_challenge_method: "S256".into(),
-            state: "state".into(),
-            redirect_uri: Url::parse("http://localhost:4444/api/redirect").unwrap(),
-        };
-        let random_token = oauth2::CsrfToken::new_random();
-        let mut cache_conn = srv.cache_pool.get().await.unwrap();
-        let _: Option<String> = redis::cmd("SETEX")
-            .arg(random_token.secret())
-            .arg(60i32 * 10)
-            .arg(initial.to_query_string().unwrap())
-            .query_async(&mut cache_conn)
-            .await
-            .unwrap();
-        let uri = format!("/api/authorize/github/{}", random_token.secret());
-        let req = actix_web::test::TestRequest::get()
-            .uri(uri.as_str())
-            .to_request();
-        let res = srv.execute(req).await;
-        assert_eq!(res.status(), StatusCode::FOUND);
-        let location = res.headers().get(LOCATION).unwrap().to_str().unwrap();
-        let location = Url::parse(location).unwrap();
-        assert_eq!(location.domain(), Some("github.com"));
-        assert_eq!(location.scheme(), "https");
-        assert_eq!(location.path(), "/login/oauth/authorize");
-    }
+        crate::init_logger();
 
-    #[actix_web::test]
-    async fn invalid_provider() {
-        let srv = TestServer::from_simple();
-        let initial = InitialAuthorizationRequest {
-            client_id: "main-client-id".into(),
-            code_challenge: "code-challenge".into(),
-            code_challenge_method: "S256".into(),
-            state: "state".into(),
-            redirect_uri: Url::parse("http://localhost:4444/api/redirect").unwrap(),
-        };
-        let random_token = oauth2::CsrfToken::new_random();
-        let mut cache_conn = srv.cache_pool.get().await.unwrap();
-        let _: Option<String> = redis::cmd("SETEX")
-            .arg(random_token.secret())
-            .arg(60i32 * 10)
-            .arg(initial.to_query_string().unwrap())
-            .query_async(&mut cache_conn)
+        let server = Server::new(settings()).await;
+
+        let mut tx = server.database.begin().await.unwrap();
+        let application = FindApplicationByClientId::new("main-client-id")
+            .execute(&mut tx)
+            .await
+            .unwrap()
+            .unwrap();
+        let providers = ListProviderByApplicationId::new(application.id)
+            .execute(&mut tx)
             .await
             .unwrap();
-        let uri = format!("/api/authorize/unknown/{}", random_token.secret());
-        let req = actix_web::test::TestRequest::get()
-            .uri(uri.as_str())
-            .to_request();
-        let res = srv.execute(req).await;
-        assert_eq!(res.status(), StatusCode::BAD_REQUEST);
-        let body: String = actix_web::test::read_body_json(res).await;
-        assert_eq!(body, "provider not found");
+
+        let state = CsrfToken::new_random().secret().to_owned();
+        let (code_challenge, _pkce_verifier) = oauth2::PkceCodeChallenge::new_random_sha256();
+        let request_id = CreateApplicationAuthorizationRequest::new(
+            application.id,
+            code_challenge.as_str(),
+            code_challenge.method().as_str(),
+            state.as_ref(),
+            &application.redirect_uri,
+        )
+        .execute(&mut tx)
+        .await
+        .unwrap();
+        tx.commit().await.unwrap();
+
+        let app = server.router();
+        let uri = format!("/api/authorize/{}/{}", request_id, providers[0].id);
+
+        let res = app
+            .oneshot(
+                Request::builder()
+                    .uri(&uri)
+                    .method("GET")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        let status = res.status();
+        let location = res.headers().get(LOCATION).unwrap();
+
+        assert_eq!(status, 307);
+        let location = location.to_str().unwrap().to_owned();
+        let location = url::Url::parse(&location).unwrap();
+        assert_eq!(location.host_str().unwrap(), "github.com");
+        let query = location.query_pairs().collect::<HashMap<_, _>>();
+        assert_eq!(query.get("response_type").unwrap(), "code");
+        assert_eq!(query.get("client_id").unwrap(), "github-client-id");
+        assert!(query.contains_key("state"));
+        assert!(query.contains_key("code_challenge"));
+        assert_eq!(query.get("code_challenge_method").unwrap(), "S256");
+        assert_eq!(
+            query.get("redirect_uri").unwrap(),
+            "http://127.0.0.1:3000/api/redirect"
+        );
     }
 }
