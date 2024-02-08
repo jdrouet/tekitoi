@@ -4,6 +4,9 @@
   <a href="#" target="_blank">
     <img alt="License: MIT" src="https://img.shields.io/badge/License-MIT-yellow.svg" />
   </a>
+  <a href="https://codecov.io/github/jdrouet/tekitoi" > 
+ <img src="https://codecov.io/github/jdrouet/tekitoi/graph/badge.svg"/> 
+ </a>
 </p>
 
 > A simple and lightweight proxy oauth 🦀
