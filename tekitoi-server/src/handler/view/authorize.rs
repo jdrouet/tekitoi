@@ -103,6 +103,7 @@ pub(crate) async fn handler(
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashMap;
     use std::path::PathBuf;
 
     use crate::{settings::Settings, Server};
@@ -204,7 +205,7 @@ mod tests {
     async fn redirect_uri_mismatch() {
         crate::init_logger();
 
-        let auth_uri = {
+        let (auth_uri, csrf_token) = {
             let client = oauth2::basic::BasicClient::new(
                 oauth2::ClientId::new("main-client-id".into()),
                 None,
@@ -218,13 +219,13 @@ mod tests {
             let (pkce_challenge, _pkce_verifier) = oauth2::PkceCodeChallenge::new_random_sha256();
 
             // Generate the full authorization URL.
-            let (auth_url, _csrf_token) = client
+            let (auth_url, csrf_token) = client
                 .authorize_url(oauth2::CsrfToken::new_random)
                 .set_pkce_challenge(pkce_challenge)
                 .url();
             let auth_url = auth_url.to_string();
             let auth_uri = auth_url.strip_prefix("http://authorize").unwrap();
-            auth_uri.to_string()
+            (auth_uri.to_string(), csrf_token)
         };
 
         let app = Server::new(settings()).await.router();
@@ -241,13 +242,26 @@ mod tests {
             .unwrap();
 
         let status = res.status();
+        assert_eq!(status, StatusCode::TEMPORARY_REDIRECT);
+
         let header = res
             .headers()
             .get(LOCATION)
             .and_then(|h| String::from_utf8(h.as_bytes().to_vec()).ok())
             .unwrap();
-
-        assert_eq!(status, StatusCode::TEMPORARY_REDIRECT);
-        assert_eq!(header, "http://localhost:4444/api/wrong?error=redirect_uri_mismatch&error_description=The+redirect_uri+MUST+match+the+registered+callback+URL+for+this+application.");
+        let location = url::Url::parse(header.as_str()).unwrap();
+        assert_eq!(location.host_str().unwrap(), "localhost");
+        assert_eq!(location.port().unwrap(), 4444);
+        assert_eq!(location.path(), "/api/wrong");
+        let qp = location
+            .query_pairs()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect::<HashMap<_, _>>();
+        assert_eq!(qp.get("error").unwrap(), "redirect_uri_mismatch");
+        assert_eq!(
+            qp.get("error_description").unwrap(),
+            "The redirect_uri MUST match the registered callback URL for this application."
+        );
+        assert_eq!(qp.get("state").unwrap(), csrf_token.secret());
     }
 }
