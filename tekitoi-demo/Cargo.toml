@@ -7,7 +7,7 @@ edition = "2021"
 
 [dependencies]
 axum = { version = "0.7", features = ["macros"] }
-config = { version = "0.13", default-features = false }
+config = { version = "0.14", default-features = false }
 moka = { version = "0.12.5", features = ["future"] }
 oauth2 = { version = "4.2" }
 redis = { version = "0.24", default-features = false, features = [
