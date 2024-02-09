@@ -47,9 +47,7 @@ pub async fn handler(
                         format!("/?token={}", token.access_token().secret()).as_str(),
                     )
                 })
-                .unwrap_or_else(|err| {
-                    Redirect::temporary(format!("/?error={}", err.to_string()).as_str())
-                })
+                .unwrap_or_else(|err| Redirect::temporary(format!("/?error={err}").as_str()))
         }
         QueryParams::Error {
             error_uri, error, ..
