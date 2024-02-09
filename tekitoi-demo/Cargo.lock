@@ -229,10 +229,12 @@ version = "0.4.19"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "670ad68c9088c2a963aaa298cb369688cf3f9465ce5e2d4ca10e6e0098a1ce73"
 dependencies = [
+ "js-sys",
  "libc",
  "num-integer",
  "num-traits",
  "serde",
+ "wasm-bindgen",
  "winapi",
 ]
 
@@ -895,9 +897,9 @@ dependencies = [
 
 [[package]]
 name = "oauth2"
-version = "4.2.2"
+version = "4.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "09edac2677609789a6eb6c95badde366c5162adae0b740a2af0d355604ce7125"
+checksum = "c38841cdd844847e3e7c8d29cef9dcfed8877f8f56f9071f77843ecf3baf937f"
 dependencies = [
  "base64",
  "chrono",
