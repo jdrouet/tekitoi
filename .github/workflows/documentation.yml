@@ -1,13 +1,23 @@
 name: deploy doc on github pages
 
 on:
+  workflow_call:
+  pull_request:
+    paths:
+      - ".github/workflows/documentation.yml"
+      - "tekitoi-doc/**"
   push:
     branches:
       - main
+    paths:
+      - ".github/workflows/documentation.yml"
+      - "tekitoi-doc/**"
 
 jobs:
   deploy:
     runs-on: ubuntu-20.04
+    permissions:
+      contents: write
     concurrency:
       group: ${{ github.workflow }}-documentation-${{ github.ref }}
     steps:
