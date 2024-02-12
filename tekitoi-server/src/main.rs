@@ -1,6 +1,6 @@
 mod arguments;
 
-use tekitoi_server::Server;
+use tekitoi::Server;
 
 #[tokio::main]
 async fn main() {

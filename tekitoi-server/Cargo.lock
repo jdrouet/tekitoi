@@ -2302,7 +2302,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "tekitoi-server"
+name = "tekitoi"
 version = "0.1.0"
 dependencies = [
  "anyhow",

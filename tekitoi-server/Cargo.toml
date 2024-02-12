@@ -1,5 +1,5 @@
 [package]
-name = "tekitoi-server"
+name = "tekitoi"
 version = "0.1.0"
 edition = "2021"
 
