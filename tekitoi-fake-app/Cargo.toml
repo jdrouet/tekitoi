@@ -1,5 +1,5 @@
 [package]
-name = "tekitoi-demo"
+name = "tekitoi-fake-app"
 version = "0.1.0"
 edition = "2021"
 

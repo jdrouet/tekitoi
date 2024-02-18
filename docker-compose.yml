@@ -1,7 +1,7 @@
 services:
   demo:
-    build: tekitoi-demo
-    image: tekitoi-demo
+    build: tekitoi-fake-app
+    image: tekitoi-fake-app
     environment:
       - LOG=debug
       - CLIENT_ID=tekitoi-client-id

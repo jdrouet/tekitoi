@@ -1,4 +1,4 @@
-FROM --platform=$BUILDPLATFORM rust:1-alpine3.14 AS fetcher
+FROM --platform=$BUILDPLATFORM rust:1-alpine AS fetcher
 
 ENV USER=root
 
@@ -8,7 +8,7 @@ COPY Cargo.toml Cargo.lock /code/
 RUN mkdir -p /code/.cargo \
   && cargo vendor > /code/.cargo/config.toml
 
-FROM rust:1-alpine3.14 AS builder
+FROM rust:1-alpine AS builder
 
 RUN apk add --no-cache musl-dev
 
@@ -21,11 +21,11 @@ COPY templates /code/templates
 
 RUN cargo build --release --offline
 
-FROM alpine:3.14
+FROM alpine
 
 ENV HOST=0.0.0.0
 ENV PORT=8080
 
-COPY --from=builder /code/target/release/tekitoi-demo /usr/bin/tekitoi-demo
+COPY --from=builder /code/target/release/tekitoi-fake-app /usr/bin/tekitoi-fake-app
 
-ENTRYPOINT ["/usr/bin/tekitoi-demo"]
+ENTRYPOINT ["/usr/bin/tekitoi-fake-app"]
