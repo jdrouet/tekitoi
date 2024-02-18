@@ -1,21 +1,21 @@
-name: test demo
+name: test fake-app
 
 on:
   workflow_call:
   pull_request:
     paths:
-      - ".github/workflows/demo.yml"
-      - "tekitoi-demo/**"
+      - ".github/workflows/fake-app.yml"
+      - "tekitoi-fake-app/**"
   push:
     branches:
       - main
     paths:
-      - ".github/workflows/demo.yml"
-      - "tekitoi-demo/**"
+      - ".github/workflows/fake-app.yml"
+      - "tekitoi-fake-app/**"
 
 defaults:
   run:
-    working-directory: tekitoi-demo
+    working-directory: tekitoi-fake-app
 
 env:
   RUSTFLAGS: "-Dwarnings"
@@ -25,7 +25,7 @@ jobs:
     runs-on: ubuntu-latest
 
     concurrency:
-      group: ${{ github.ref }}-demo-linting
+      group: ${{ github.ref }}-fake-app-linting
       cancel-in-progress: true
 
     steps:
@@ -44,7 +44,7 @@ jobs:
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             target/
-          key: ${{ runner.os }}-server-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ runner.os }}-fake-app-${{ hashFiles('**/Cargo.lock') }}
 
       - name: run lint
         run: cargo fmt --all --check
