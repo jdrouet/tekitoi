@@ -25,7 +25,7 @@ tower-http = { version = "0.5", features = ["fs", "trace"] }
 tracing = { version = "0.1" }
 tracing-subscriber = { version = "0.3" }
 url = { version = "2.5", default-features = false, features = ["serde"] }
-uuid = { version = "1.7", features = ["serde", "v4"] }
+uuid = { version = "1.8", features = ["serde", "v4"] }
 tokio = { version = "1.36", features = ["macros", "rt-multi-thread"] }
 sqlx = { version = "0.7", features = ["runtime-tokio", "sqlite", "uuid"] }
 serde_url_params = { version = "0.2" }
