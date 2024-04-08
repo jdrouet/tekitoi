@@ -19,7 +19,7 @@ reqwest = { version = "0.11", default-features = false, features = [
 ] }
 sailfish = { version = "0.8" }
 serde = { version = "1.0" }
-serde_qs = { version = "0.12" }
+serde_qs = { version = "0.13" }
 serde_json = { version = "1.0" }
 tower-http = { version = "0.5", features = ["fs", "trace"] }
 tracing = { version = "0.1" }
