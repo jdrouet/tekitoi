@@ -27,6 +27,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "another-html-builder"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b56f98f8109c4e1962b8fc814a9bd5c20e2c23a7942c9537e1f6346c43ecbaae"
+
+[[package]]
 name = "anyhow"
 version = "1.0.93"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1056,6 +1062,7 @@ checksum = "7b2093cf4c8eb1e67749a6762251bc9cd836b6fc171623bd0a9d324d37af2417"
 name = "tekitoi-server"
 version = "0.1.0"
 dependencies = [
+ "another-html-builder",
  "anyhow",
  "axum",
  "axum-extra",

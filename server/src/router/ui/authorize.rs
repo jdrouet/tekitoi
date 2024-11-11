@@ -34,28 +34,33 @@ impl ResponseError {
             Self::UnableToBuildPage => "Something went wrong...",
         }
     }
-}
 
-impl std::fmt::Display for ResponseError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        super::helper::doctype(f)?;
-        f.write_str("<html lang=\"en\">")?;
-        f.write_str("<head>")?;
-        f.write_str("<meta charset=\"utf-8\" />")?;
-        f.write_str("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />")?;
-        f.write_str("</head>")?;
-        f.write_str("<body>")?;
-        f.write_str("<div>")?;
-        f.write_str(self.message())?;
-        f.write_str("</div>")?;
-        f.write_str("</body>")?;
-        f.write_str("</html>")
+    fn render(&self) -> String {
+        another_html_builder::Buffer::default()
+            .doctype()
+            .node("html")
+            .attr(("lang", "en"))
+            .content(|buf| {
+                buf.node("head")
+                    .content(|buf| {
+                        buf.node("meta")
+                            .attr(("charset", "utf-8"))
+                            .close()
+                            .node("meta")
+                            .attr(("name", "viewport"))
+                            .attr(("content", "width=device-width, initial-scale=1"))
+                            .close()
+                    })
+                    .node("body")
+                    .content(|buf| buf.node("div").content(|buf| buf.text(self.message())))
+            })
+            .into_inner()
     }
 }
 
 impl IntoResponse for ResponseError {
     fn into_response(self) -> axum::response::Response {
-        (self.status(), Html(self.to_string())).into_response()
+        (self.status(), Html(self.render())).into_response()
     }
 }
 
@@ -75,26 +80,37 @@ impl<'a> ResponseSuccess<'a> {
             users: users_generated,
         })
     }
-}
 
-impl<'a> std::fmt::Display for ResponseSuccess<'a> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        super::helper::doctype(f)?;
-        f.write_str("<html lang=\"en\">")?;
-        f.write_str("<head>")?;
-        f.write_str("<meta charset=\"utf-8\" />")?;
-        f.write_str("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />")?;
-        f.write_str("</head>")?;
-        f.write_str("<body>")?;
-        f.write_str("<div>")?;
-        for (login, link) in self.users.iter() {
-            f.write_str("<p>")?;
-            write!(f, "<a href=\"{link}\">Login with {login}</a>")?;
-            f.write_str("</p>")?;
-        }
-        f.write_str("</div>")?;
-        f.write_str("</body>")?;
-        f.write_str("</html>")
+    fn render(&self) -> String {
+        another_html_builder::Buffer::default()
+            .doctype()
+            .node("html")
+            .attr(("lang", "en"))
+            .content(|buf| {
+                buf.node("head")
+                    .content(|buf| {
+                        buf.node("meta")
+                            .attr(("charset", "utf-8"))
+                            .close()
+                            .node("meta")
+                            .attr(("name", "viewport"))
+                            .attr(("content", "width=device-width, initial-scale=1"))
+                            .close()
+                    })
+                    .node("body")
+                    .content(|buf| {
+                        buf.node("div").content(|buf| {
+                            self.users.iter().fold(buf, |buf, (login, link)| {
+                                buf.node("p").content(|buf| {
+                                    buf.node("a")
+                                        .attr(("href", link.as_str()))
+                                        .content(|buf| buf.text(login))
+                                })
+                            })
+                        })
+                    })
+            })
+            .into_inner()
     }
 }
 
@@ -175,7 +191,7 @@ pub(super) async fn handle(
                 tracing::error!(message = "unable to generate page", source = %err);
                 ResponseError::UnableToBuildPage
             })?
-            .to_string(),
+            .render(),
     };
     Ok(Html(html))
 }

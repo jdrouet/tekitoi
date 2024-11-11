@@ -1,15 +1,26 @@
 use std::{borrow::Cow, collections::HashMap, fmt::Display};
 
-#[inline(always)]
-pub(super) fn doctype(f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    f.write_str("<!DOCTYPE html>")
-}
-
 pub(super) fn redirection<T: Display>(target: T) -> String {
-    format!(
-        r#"<!DOCTYPE html><html><head><meta http-equiv="refresh" content="1; url='{}'" /></head><body><p>You will be redirected soon...</p></body></html>"#,
-        target
-    )
+    let content = format!("1; url='{target}'");
+    another_html_builder::Buffer::default()
+        .doctype()
+        .node("html")
+        .attr(("lang", "en"))
+        .content(|buf| {
+            buf.node("head")
+                .content(|buf| {
+                    buf.node("meta")
+                        .attr(("http-equiv", "refresh"))
+                        .attr(("content", content.as_str()))
+                        .close()
+                })
+                .node("body")
+                .content(|buf| {
+                    buf.node("p")
+                        .content(|buf| buf.text("You will be redirected soon..."))
+                })
+        })
+        .into_inner()
 }
 
 pub(super) fn encode_params<'a>(

@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+another-html-builder = { version = "0.1" }
 anyhow = { version = "1.0" }
 axum = { version = "0.7", features = ["macros"] }
 axum-extra = { version = "0.9", features = ["cookie", "typed-header"] }
