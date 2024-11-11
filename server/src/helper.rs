@@ -3,11 +3,6 @@ use std::{borrow::Cow, str::FromStr};
 use anyhow::Context;
 
 #[inline(always)]
-pub(crate) fn from_env(name: &str) -> anyhow::Result<String> {
-    std::env::var(name).with_context(|| format!("getting environment variable {name:?}"))
-}
-
-#[inline(always)]
 pub(crate) fn from_env_or(name: &str, default_value: &'static str) -> Cow<'static, str> {
     std::env::var(name)
         .ok()
