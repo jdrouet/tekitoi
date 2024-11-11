@@ -10,6 +10,10 @@ use uuid::Uuid;
 use crate::entity::user::Entity as UserEntity;
 use crate::helper::parse_env_or;
 
+#[cfg(test)]
+pub(crate) const ALICE_ID: Uuid = Uuid::from_u128(0x00000000000000000000000000000000u128);
+pub(crate) const BOB_ID: Uuid = Uuid::from_u128(0x00000000000000000000000000000001u128);
+
 #[derive(serde::Deserialize)]
 struct RootConfig {
     applications: Vec<ApplicationConfig>,
@@ -95,5 +99,33 @@ pub(crate) struct Client(Arc<HashMap<String, ApplicationClient>>);
 impl Client {
     pub fn find(&self, client_id: &str) -> Option<&ApplicationClient> {
         self.0.get(client_id)
+    }
+}
+
+#[cfg(test)]
+impl Client {
+    pub(crate) fn test() -> Self {
+        Self(Arc::new(HashMap::from_iter([(
+            "client-id".to_string(),
+            ApplicationClient {
+                client_secrets: HashSet::from_iter([
+                    "first-secret".to_string(),
+                    "second-secret".to_string(),
+                ]),
+                redirect_uri: String::from("http://service/redirect"),
+                users: vec![
+                    UserEntity {
+                        id: ALICE_ID,
+                        login: "alice".into(),
+                        email: "alice@example.com".into(),
+                    },
+                    UserEntity {
+                        id: BOB_ID,
+                        login: "bob".into(),
+                        email: "bob@example.com".into(),
+                    },
+                ],
+            },
+        )])))
     }
 }

@@ -188,3 +188,6 @@ pub(super) async fn handle(
     };
     Ok(Html(html))
 }
+
+#[cfg(test)]
+mod tests {}

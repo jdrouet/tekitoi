@@ -40,15 +40,57 @@ pub(crate) struct Application {
 }
 
 impl Application {
+    fn router(&self) -> axum::Router {
+        crate::router::create()
+            .layer(Extension(self.dataset.clone()))
+            .layer(Extension(self.cache.clone()))
+            .layer(TraceLayer::new_for_http())
+    }
+
     pub async fn run(self) -> anyhow::Result<()> {
         tracing::debug!("binding socket to {}", self.socket_address);
         let listener = TcpListener::bind(self.socket_address).await?;
-        let router = crate::router::create()
-            .layer(Extension(self.dataset))
-            .layer(Extension(self.cache))
-            .layer(TraceLayer::new_for_http());
         tracing::info!("listening on {}", self.socket_address);
-        axum::serve(listener, router).await?;
+        axum::serve(listener, self.router()).await?;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+impl Application {
+    pub(crate) fn test() -> Self {
+        Self {
+            socket_address: SocketAddr::from((Ipv4Addr::new(127, 0, 0, 1), 8080)),
+            cache: crate::service::cache::Client::test(),
+            dataset: crate::service::dataset::Client::test(),
+        }
+    }
+
+    pub(crate) fn random() -> (u16, Self) {
+        use rand::Rng;
+
+        let mut rng = rand::thread_rng();
+        let port: u16 = rng.gen_range(9000..9100);
+        (
+            port,
+            Self {
+                socket_address: SocketAddr::from((Ipv4Addr::new(127, 0, 0, 1), port)),
+                cache: crate::service::cache::Client::test(),
+                dataset: crate::service::dataset::Client::test(),
+            },
+        )
+    }
+
+    pub(crate) fn cache(&self) -> &crate::service::cache::Client {
+        &self.cache
+    }
+
+    pub(crate) async fn handle(
+        &self,
+        req: axum::http::Request<axum::body::Body>,
+    ) -> axum::http::Response<axum::body::Body> {
+        use tower::ServiceExt;
+
+        self.router().oneshot(req).await.unwrap()
     }
 }

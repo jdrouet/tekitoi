@@ -54,3 +54,14 @@ impl Client {
         self.inner.insert(key, value).await
     }
 }
+
+#[cfg(test)]
+impl Client {
+    pub(crate) fn test() -> Self {
+        let inner = moka::future::CacheBuilder::default()
+            .max_capacity(100)
+            .time_to_live(Duration::from_secs(10))
+            .build();
+        Client { inner }
+    }
+}
