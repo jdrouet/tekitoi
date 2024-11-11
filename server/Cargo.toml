@@ -1,5 +1,5 @@
 [package]
-name = "tekitoi"
+name = "tekitoi-server"
 version = "0.1.0"
 edition = "2021"
 
@@ -24,5 +24,4 @@ uuid = { version = "1.11", features = ["serde", "v4"] }
 
 [dev-dependencies]
 http-body-util = "0.1.2"
-oauth2 = { version = "4.4" }
 tower = "0.5.1"
