@@ -74,8 +74,11 @@ pub(crate) struct ResponseSuccess<'a> {
 }
 
 impl<'a> ResponseSuccess<'a> {
-    fn new(mut params: QueryParams, users: &'a [UserEntity]) -> anyhow::Result<Self> {
-        let mut users_generated = Vec::with_capacity(users.len());
+    fn new(
+        mut params: QueryParams,
+        users: impl Iterator<Item = &'a UserEntity>,
+    ) -> anyhow::Result<Self> {
+        let mut users_generated = Vec::new();
         for user in users {
             params.user = Some(user.id);
             let link = params.into_url()?;
@@ -168,10 +171,7 @@ pub(super) async fn handle(
     if !app.check_redirect_uri(params.redirect_uri.as_str()) {
         return Err(ResponseError::InvalidRedirectUri);
     }
-    let html = match params
-        .user
-        .and_then(|user_id| app.users().iter().find(|user| user.id == user_id))
-    {
+    let html = match params.user.and_then(|user_id| app.user(user_id)) {
         Some(user) => {
             let code = uuid::Uuid::new_v4().to_string();
             cache

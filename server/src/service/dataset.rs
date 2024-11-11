@@ -39,7 +39,7 @@ impl ApplicationConfig {
             ApplicationClient {
                 redirect_uri: self.redirect_uri,
                 client_secrets: self.client_secrets,
-                users: self.users,
+                users: self.users.into_iter().map(|user| (user.id, user)).collect(),
             },
         )
     }
@@ -77,7 +77,7 @@ impl Config {
 pub(crate) struct ApplicationClient {
     client_secrets: HashSet<String>,
     redirect_uri: String,
-    users: Vec<UserEntity>,
+    users: HashMap<Uuid, UserEntity>,
 }
 
 impl ApplicationClient {
@@ -89,12 +89,12 @@ impl ApplicationClient {
         self.client_secrets.contains(secret)
     }
 
-    pub(crate) fn users(&self) -> &[UserEntity] {
-        &self.users
+    pub(crate) fn users(&self) -> impl Iterator<Item = &UserEntity> {
+        self.users.values()
     }
 
     pub(crate) fn user(&self, user_id: Uuid) -> Option<&UserEntity> {
-        self.users.iter().find(|u| u.id == user_id)
+        self.users.get(&user_id)
     }
 }
 
@@ -118,18 +118,24 @@ impl Client {
                     "second-secret".to_string(),
                 ]),
                 redirect_uri: "http://service/redirect".into(),
-                users: vec![
-                    UserEntity {
-                        id: ALICE_ID,
-                        login: "alice".into(),
-                        email: "alice@example.com".into(),
-                    },
-                    UserEntity {
-                        id: BOB_ID,
-                        login: "bob".into(),
-                        email: "bob@example.com".into(),
-                    },
-                ],
+                users: HashMap::from_iter([
+                    (
+                        ALICE_ID,
+                        UserEntity {
+                            id: ALICE_ID,
+                            login: "alice".into(),
+                            email: "alice@example.com".into(),
+                        },
+                    ),
+                    (
+                        BOB_ID,
+                        UserEntity {
+                            id: BOB_ID,
+                            login: "bob".into(),
+                            email: "bob@example.com".into(),
+                        },
+                    ),
+                ]),
             },
         )])))
     }
