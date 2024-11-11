@@ -41,6 +41,7 @@ FROM alpine
 # ENV CLIENT_PATH=/etc/tekitoi/client
 ENV SERVER_HOST=0.0.0.0
 ENV SERVER_PORT=3000
+ENV CONFIG_PATH=/data/config.json
 # ENV DATABASE_URL=/data/tekitoi.db
 
 # COPY --from=client-builder /code/dist /etc/tekitoi/client

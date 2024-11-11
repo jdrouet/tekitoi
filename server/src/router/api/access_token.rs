@@ -1,3 +1,4 @@
+use std::error::Error;
 use std::time::Duration;
 
 use axum::extract::rejection::{FormRejection, JsonRejection};
@@ -18,6 +19,7 @@ pub(crate) struct AnyContentType<T>(pub T);
 pub(crate) enum AnyContentTypeRejection {
     ContentTypeHeaderMissing,
     ContentTypeHeaderInvalid,
+    ContentTypeNotSupported,
     JsonRejection(JsonRejection),
     FormRejection(FormRejection),
 }
@@ -32,12 +34,18 @@ impl AnyContentTypeRejection {
                 StatusCode::BAD_REQUEST,
                 "invalid 'Content-Type' header provided",
             ),
+            Self::ContentTypeNotSupported => (
+                StatusCode::NOT_ACCEPTABLE,
+                "provided 'Content-Type' not supported",
+            ),
             Self::JsonRejection(err) => {
-                tracing::debug!(message = "failed decoding json payload", cause = %err);
+                let cause = err.source();
+                tracing::debug!(message = "failed decoding json payload", cause = cause);
                 (StatusCode::BAD_REQUEST, "unable to decode json payload")
             }
             Self::FormRejection(err) => {
-                tracing::debug!(message = "failed decoding form payload", cause = %err);
+                let cause = err.source();
+                tracing::debug!(message = "failed decoding form payload", cause = cause);
                 (StatusCode::BAD_REQUEST, "unable to decode form payload")
             }
         }
@@ -72,21 +80,21 @@ where
                 .await
                 .map(|Json(inner)| AnyContentType(inner))
                 .map_err(AnyContentTypeRejection::JsonRejection)
-        } else {
+        } else if content_type.starts_with("application/x-www-form-urlencoded") {
             Form::from_request(req, state)
                 .await
                 .map(|Form(inner)| AnyContentType(inner))
                 .map_err(AnyContentTypeRejection::FormRejection)
+        } else {
+            Err(AnyContentTypeRejection::ContentTypeNotSupported)
         }
     }
 }
 
 pub enum ResponseError {
     CodeNotFound,
-    InvalidClientId,
     ApplicationNotFound,
     InvalidRedirectUri,
-    InvalidClientSecret,
 }
 
 impl IntoResponse for ResponseError {
@@ -98,9 +106,9 @@ impl IntoResponse for ResponseError {
 #[derive(serde::Deserialize)]
 #[cfg_attr(test, derive(serde::Serialize))]
 pub(crate) struct RequestPayload {
-    client_id: String,
-    client_secret: String,
     code: String,
+    grant_type: String,
+    code_verifier: String,
     redirect_uri: String,
 }
 
@@ -194,18 +202,12 @@ pub(super) async fn handle(
         .remove(&payload.code)
         .await
         .ok_or(ResponseError::CodeNotFound)?;
-    if payload.client_id != state.client_id {
-        return Err(ResponseError::InvalidClientId);
-    }
 
     let app = dataset
-        .find(&payload.client_id)
+        .find(&state.client_id)
         .ok_or(ResponseError::ApplicationNotFound)?;
     if !app.check_redirect_uri(payload.redirect_uri.as_str()) {
         return Err(ResponseError::InvalidRedirectUri);
-    }
-    if !app.check_client_secret(payload.client_secret.as_str()) {
-        return Err(ResponseError::InvalidClientSecret);
     }
 
     let access_token = generate_token();
@@ -270,9 +272,9 @@ mod integration_tests {
             .method("POST")
             .body(Body::from(
                 serde_json::to_vec(&super::RequestPayload {
-                    client_id: APP_ID.into(),
-                    client_secret: "first-secret".into(),
                     code: "aaaaaaaaaaaaaaaaaaa".into(),
+                    code_verifier: "whatever".into(),
+                    grant_type: "".into(),
                     redirect_uri: REDIRECT_URI.into(),
                 })
                 .unwrap(),
@@ -317,9 +319,9 @@ mod integration_tests {
             .method("POST")
             .body(Body::from(
                 serde_json::to_vec(&super::RequestPayload {
-                    client_id: APP_ID.into(),
-                    client_secret: "first-secret".into(),
                     code: "aaaaaaaaaaaaaaaaaaa".into(),
+                    code_verifier: "whatever".into(),
+                    grant_type: "".into(),
                     redirect_uri: REDIRECT_URI.into(),
                 })
                 .unwrap(),
@@ -364,9 +366,9 @@ mod integration_tests {
             .method("POST")
             .body(Body::from(
                 serde_json::to_vec(&super::RequestPayload {
-                    client_id: APP_ID.into(),
-                    client_secret: "first-secret".into(),
                     code: "aaaaaaaaaaaaaaaaaaa".into(),
+                    code_verifier: "whatever".into(),
+                    grant_type: "".into(),
                     redirect_uri: REDIRECT_URI.into(),
                 })
                 .unwrap(),

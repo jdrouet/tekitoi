@@ -75,6 +75,7 @@ impl Config {
 
 #[derive(Debug)]
 pub(crate) struct ApplicationClient {
+    #[allow(unused)]
     client_secrets: HashSet<String>,
     redirect_uri: String,
     users: HashMap<Uuid, UserEntity>,
@@ -85,6 +86,7 @@ impl ApplicationClient {
         self.redirect_uri.eq(redirect_uri)
     }
 
+    #[allow(unused)]
     pub(crate) fn check_client_secret(&self, secret: &str) -> bool {
         self.client_secrets.contains(secret)
     }
