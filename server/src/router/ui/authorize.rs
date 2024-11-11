@@ -134,14 +134,6 @@ impl AuthorizationState {
             user,
         }
     }
-
-    pub fn serialize(&self) -> String {
-        serde_urlencoded::to_string(self).unwrap()
-    }
-
-    pub fn deserialize(input: &str) -> Self {
-        serde_urlencoded::from_str(input).unwrap()
-    }
 }
 
 pub(super) async fn handle(
@@ -164,13 +156,12 @@ pub(super) async fn handle(
             cache
                 .insert(
                     code.clone(),
-                    AuthorizationState::new(
+                    &AuthorizationState::new(
                         params.state.clone(),
                         params.scope,
                         params.client_id,
                         user.id,
-                    )
-                    .serialize(),
+                    ),
                 )
                 .await;
             let redirection_url = encode_url(

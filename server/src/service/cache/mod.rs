@@ -42,16 +42,27 @@ pub(crate) struct Client {
 }
 
 impl Client {
-    pub async fn remove(&self, key: &str) -> Option<String> {
-        self.inner.remove(key).await
+    pub async fn remove<V: serde::de::DeserializeOwned>(&self, key: &str) -> Option<V> {
+        self.inner
+            .remove(key)
+            .await
+            .and_then(|v| serde_urlencoded::from_str(v.as_str()).ok())
     }
 
-    pub async fn get(&self, key: &str) -> Option<String> {
-        self.inner.get(key).await
+    pub async fn get<V: serde::de::DeserializeOwned>(&self, key: &str) -> Option<V> {
+        self.inner
+            .get(key)
+            .await
+            .and_then(|v| serde_urlencoded::from_str(v.as_str()).ok())
     }
 
-    pub async fn insert(&self, key: String, value: String) {
-        self.inner.insert(key, value).await
+    pub async fn insert<V: serde::Serialize>(&self, key: String, value: &V) {
+        match serde_urlencoded::to_string(value) {
+            Ok(encoded) => self.inner.insert(key, encoded).await,
+            Err(err) => {
+                tracing::error!(message = "unable to insert in cache", cause = %err);
+            }
+        }
     }
 }
 

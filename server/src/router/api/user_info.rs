@@ -39,11 +39,10 @@ pub(super) async fn handle(
     Extension(dataset): Extension<crate::service::dataset::Client>,
     AuthorizationToken(token): AuthorizationToken,
 ) -> Result<Json<UserEntity>, ErrorResponse> {
-    let session = cache
+    let session: SessionState = cache
         .get(token.token())
         .await
         .ok_or(ErrorResponse::TokenNotFound)?;
-    let session = SessionState::deserialize(&session);
     let app = dataset
         .find(&session.client_id)
         .ok_or(ErrorResponse::ApplicationNotFound)?;
@@ -68,7 +67,7 @@ mod integration_tests {
         app.cache()
             .insert(
                 "aaaaaaaaaaaaaaaaaaa".into(),
-                SessionState::new("client-id".into(), ALICE_ID, None).serialize(),
+                &SessionState::new("client-id".into(), ALICE_ID, None),
             )
             .await;
 
@@ -101,7 +100,7 @@ mod integration_tests {
         app.cache()
             .insert(
                 "aaaaaaaaaaaaaaaaaaa".into(),
-                SessionState::new("unknown".into(), ALICE_ID, None).serialize(),
+                &SessionState::new("unknown".into(), ALICE_ID, None),
             )
             .await;
 
@@ -121,7 +120,7 @@ mod integration_tests {
         app.cache()
             .insert(
                 "aaaaaaaaaaaaaaaaaaa".into(),
-                SessionState::new("client-id".into(), Uuid::new_v4(), None).serialize(),
+                &SessionState::new("client-id".into(), Uuid::new_v4(), None),
             )
             .await;
 

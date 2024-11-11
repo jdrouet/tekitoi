@@ -1,6 +1,4 @@
-use std::default;
-
-use axum::extract::rejection::{BytesRejection, JsonRejection};
+use axum::extract::rejection::{FormRejection, JsonRejection};
 use axum::http::header::{ACCEPT, CONTENT_TYPE};
 use axum::http::request::Parts;
 use axum::http::StatusCode;
@@ -16,14 +14,35 @@ pub(crate) enum AnyContentTypeRejection {
     ContentTypeHeaderMissing,
     ContentTypeHeaderInvalid,
     JsonRejection(JsonRejection),
-    BytesRejection(BytesRejection),
-    BytesInvalid(serde_urlencoded::de::Error),
-    ContentTypeNotSupported,
+    FormRejection(FormRejection),
+}
+
+impl AnyContentTypeRejection {
+    fn status_and_message(&self) -> (StatusCode, &'static str) {
+        match self {
+            Self::ContentTypeHeaderMissing => {
+                (StatusCode::BAD_REQUEST, "no 'Content-Type' header provided")
+            }
+            Self::ContentTypeHeaderInvalid => (
+                StatusCode::BAD_REQUEST,
+                "invalid 'Content-Type' header provided",
+            ),
+            Self::JsonRejection(err) => {
+                tracing::debug!(message = "failed decoding json payload", cause = %err);
+                (StatusCode::BAD_REQUEST, "unable to decode json payload")
+            }
+            Self::FormRejection(err) => {
+                tracing::debug!(message = "failed decoding form payload", cause = %err);
+                (StatusCode::BAD_REQUEST, "unable to decode form payload")
+            }
+        }
+    }
 }
 
 impl IntoResponse for AnyContentTypeRejection {
     fn into_response(self) -> axum::response::Response {
-        StatusCode::NOT_ACCEPTABLE.into_response()
+        let (status, message) = self.status_and_message();
+        super::error::Error::new(status, message).into_response()
     }
 }
 
@@ -49,14 +68,10 @@ where
                 .map(|Json(inner)| AnyContentType(inner))
                 .map_err(AnyContentTypeRejection::JsonRejection)
         } else {
-            axum::body::Bytes::from_request(req, state)
+            Form::from_request(req, state)
                 .await
-                .map_err(AnyContentTypeRejection::BytesRejection)
-                .and_then(|bytes| {
-                    serde_urlencoded::from_bytes::<'_, T>(&bytes)
-                        .map(AnyContentType)
-                        .map_err(AnyContentTypeRejection::BytesInvalid)
-                })
+                .map(|Form(inner)| AnyContentType(inner))
+                .map_err(AnyContentTypeRejection::FormRejection)
         }
     }
 }
@@ -172,14 +187,6 @@ impl SessionState {
             scope,
         }
     }
-
-    pub fn serialize(&self) -> String {
-        serde_urlencoded::to_string(self).unwrap()
-    }
-
-    pub fn deserialize(input: &str) -> Self {
-        serde_urlencoded::from_str(input).unwrap()
-    }
 }
 
 pub(super) async fn handle(
@@ -188,11 +195,10 @@ pub(super) async fn handle(
     accept: AcceptHeader,
     AnyContentType(payload): AnyContentType<RequestPayload>,
 ) -> Result<ResponsePayload, ResponseError> {
-    let state = cache
+    let state: AuthorizationState = cache
         .remove(&payload.code)
         .await
         .ok_or(ResponseError::CodeNotFound)?;
-    let state = AuthorizationState::deserialize(&state);
     if payload.client_id != state.client_id {
         return Err(ResponseError::InvalidClientId);
     }
@@ -211,7 +217,7 @@ pub(super) async fn handle(
     cache
         .insert(
             access_token.clone(),
-            SessionState::new(state.client_id, state.user, state.scope.clone()).serialize(),
+            &SessionState::new(state.client_id, state.user, state.scope.clone()),
         )
         .await;
 
@@ -244,7 +250,7 @@ mod integration_tests {
         app.cache()
             .insert(
                 "aaaaaaaaaaaaaaaaaaa".into(),
-                AuthorizationState::new("state".into(), None, APP_ID.into(), ALICE_ID).serialize(),
+                &AuthorizationState::new("state".into(), None, APP_ID.into(), ALICE_ID),
             )
             .await;
 
@@ -284,7 +290,7 @@ mod integration_tests {
         app.cache()
             .insert(
                 "aaaaaaaaaaaaaaaaaaa".into(),
-                AuthorizationState::new("state".into(), None, APP_ID.into(), ALICE_ID).serialize(),
+                &AuthorizationState::new("state".into(), None, APP_ID.into(), ALICE_ID),
             )
             .await;
 
@@ -325,7 +331,7 @@ mod integration_tests {
         app.cache()
             .insert(
                 "aaaaaaaaaaaaaaaaaaa".into(),
-                AuthorizationState::new("state".into(), None, APP_ID.into(), ALICE_ID).serialize(),
+                &AuthorizationState::new("state".into(), None, APP_ID.into(), ALICE_ID),
             )
             .await;
 
