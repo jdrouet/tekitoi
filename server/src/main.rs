@@ -8,7 +8,7 @@ fn enable_tracing() {
     use tracing_subscriber::prelude::*;
     use tracing_subscriber::EnvFilter;
 
-    if let Err(_) = tracing_subscriber::registry()
+    if tracing_subscriber::registry()
         .with(EnvFilter::try_from_default_env().unwrap_or_else(|_| {
             // axum logs rejections from built-in extractors with the `axum::rejection`
             // target, at `TRACE` level. `axum::rejection=trace` enables showing those events
@@ -16,6 +16,7 @@ fn enable_tracing() {
         }))
         .with(tracing_subscriber::fmt::layer())
         .try_init()
+        .is_err()
     {
         tracing::warn!("tracing already set");
     }

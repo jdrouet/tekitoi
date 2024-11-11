@@ -66,21 +66,6 @@ impl Application {
         }
     }
 
-    pub(crate) fn random() -> (u16, Self) {
-        use rand::Rng;
-
-        let mut rng = rand::thread_rng();
-        let port: u16 = rng.gen_range(9000..9100);
-        (
-            port,
-            Self {
-                socket_address: SocketAddr::from((Ipv4Addr::new(127, 0, 0, 1), port)),
-                cache: crate::service::cache::Client::test(),
-                dataset: crate::service::dataset::Client::test(),
-            },
-        )
-    }
-
     pub(crate) fn cache(&self) -> &crate::service::cache::Client {
         &self.cache
     }

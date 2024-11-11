@@ -81,7 +81,7 @@ impl<'a> ResponseSuccess<'a> {
         let mut users_generated = Vec::new();
         for user in users {
             params.user = Some(user.id);
-            let link = params.into_url()?;
+            let link = params.to_url()?;
             users_generated.push((user.login.as_str(), link));
         }
         Ok(Self {
@@ -134,7 +134,7 @@ pub(crate) struct QueryParams {
 }
 
 impl QueryParams {
-    fn into_url(&self) -> anyhow::Result<String> {
+    fn to_url(&self) -> anyhow::Result<String> {
         let params = serde_urlencoded::to_string(self).context("url encoding params")?;
         Ok(format!("/authorize?{params}"))
     }

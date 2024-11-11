@@ -8,20 +8,20 @@ use crate::entity::user::Entity as UserEntity;
 
 #[derive(Debug)]
 pub(crate) enum ErrorResponse {
-    ApplicationNotFound,
+    UnknownApplication,
     TokenNotFound,
-    UserNotFound,
+    UnknownUser,
 }
 
 impl ErrorResponse {
     fn status_and_message(&self) -> (StatusCode, &'static str) {
         match self {
-            Self::ApplicationNotFound => (
+            Self::UnknownApplication => (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "unknown related application",
             ),
             Self::TokenNotFound => (StatusCode::UNAUTHORIZED, "invalid token"),
-            Self::UserNotFound => (StatusCode::INTERNAL_SERVER_ERROR, "unknown relatd user"),
+            Self::UnknownUser => (StatusCode::INTERNAL_SERVER_ERROR, "unknown relatd user"),
         }
     }
 }
@@ -45,8 +45,8 @@ pub(super) async fn handle(
         .ok_or(ErrorResponse::TokenNotFound)?;
     let app = dataset
         .find(&session.client_id)
-        .ok_or(ErrorResponse::ApplicationNotFound)?;
-    let user = app.user(session.user).ok_or(ErrorResponse::UserNotFound)?;
+        .ok_or(ErrorResponse::UnknownApplication)?;
+    let user = app.user(session.user).ok_or(ErrorResponse::UnknownUser)?;
 
     Ok(Json(user.clone()))
 }
