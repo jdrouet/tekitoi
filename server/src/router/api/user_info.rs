@@ -53,6 +53,8 @@ pub(super) async fn handle(
 
 #[cfg(test)]
 mod integration_tests {
+    use std::time::Duration;
+
     use axum::{
         body::Body,
         http::{Request, StatusCode},
@@ -61,6 +63,8 @@ mod integration_tests {
 
     use crate::{router::api::access_token::SessionState, service::dataset::ALICE_ID};
 
+    const LOCAL_TTL: Duration = Duration::new(10, 0);
+
     #[tokio::test]
     async fn should_return_user() {
         let app = crate::app::Application::test();
@@ -68,6 +72,7 @@ mod integration_tests {
             .insert(
                 "aaaaaaaaaaaaaaaaaaa".into(),
                 &SessionState::new("client-id".into(), ALICE_ID, None),
+                LOCAL_TTL,
             )
             .await;
 
@@ -101,6 +106,7 @@ mod integration_tests {
             .insert(
                 "aaaaaaaaaaaaaaaaaaa".into(),
                 &SessionState::new("unknown".into(), ALICE_ID, None),
+                LOCAL_TTL,
             )
             .await;
 
@@ -121,6 +127,7 @@ mod integration_tests {
             .insert(
                 "aaaaaaaaaaaaaaaaaaa".into(),
                 &SessionState::new("client-id".into(), Uuid::new_v4(), None),
+                LOCAL_TTL,
             )
             .await;
 

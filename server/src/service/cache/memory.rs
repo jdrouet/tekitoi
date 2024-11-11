@@ -10,7 +10,8 @@ pub(crate) struct Config {
 impl Config {
     pub(crate) fn from_env() -> anyhow::Result<Self> {
         let max_capacity = crate::helper::parse_env_or("CACHE_MAX_CAPACITY", 100)?;
-        let time_to_live = crate::helper::parse_env_or("CACHE_TIME_TO_LIVE", 60 * 10)?;
+        // we take the max of the possible TTL
+        let time_to_live = crate::helper::parse_env_or("CACHE_TIME_TO_LIVE", 60 * 60 * 24)?;
 
         Ok(Self {
             max_capacity,
@@ -47,9 +48,12 @@ impl Client {
             .and_then(|v| serde_urlencoded::from_str(v.as_str()).ok())
     }
 
-    pub async fn insert<V: serde::Serialize>(&self, key: String, value: &V) {
+    pub async fn insert<V: serde::Serialize>(&self, key: String, value: &V, _ttl: Duration) {
         match serde_urlencoded::to_string(value) {
-            Ok(encoded) => self.inner.insert(key, encoded).await,
+            Ok(encoded) => {
+                // TODO add TTL
+                self.inner.insert(key, encoded).await
+            }
             Err(err) => {
                 tracing::error!(message = "unable to insert in cache", cause = %err);
             }

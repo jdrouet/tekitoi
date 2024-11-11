@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use axum::extract::rejection::{FormRejection, JsonRejection};
 use axum::http::header::{ACCEPT, CONTENT_TYPE};
 use axum::http::request::Parts;
@@ -7,6 +9,9 @@ use axum::{Extension, Form, Json};
 use uuid::Uuid;
 
 use crate::router::ui::authorize::AuthorizationState;
+
+// 1 day
+const ACCESS_TOKEN_TTL: Duration = Duration::new(60 * 60 * 24, 0);
 
 pub(crate) struct AnyContentType<T>(pub T);
 
@@ -218,6 +223,7 @@ pub(super) async fn handle(
         .insert(
             access_token.clone(),
             &SessionState::new(state.client_id, state.user, state.scope.clone()),
+            ACCESS_TOKEN_TTL,
         )
         .await;
 
@@ -231,6 +237,8 @@ pub(super) async fn handle(
 
 #[cfg(test)]
 mod integration_tests {
+    use std::time::Duration;
+
     use axum::{
         body::Body,
         http::{Request, StatusCode},
@@ -242,6 +250,8 @@ mod integration_tests {
         service::dataset::{ALICE_ID, APP_ID, REDIRECT_URI},
     };
 
+    const SHORT_TTL: Duration = Duration::new(5, 0);
+
     #[tokio::test]
     async fn should_create_access_token_without_defined_type() {
         crate::enable_tracing();
@@ -251,6 +261,7 @@ mod integration_tests {
             .insert(
                 "aaaaaaaaaaaaaaaaaaa".into(),
                 &AuthorizationState::new("state".into(), None, APP_ID.into(), ALICE_ID),
+                SHORT_TTL,
             )
             .await;
 
@@ -291,6 +302,7 @@ mod integration_tests {
             .insert(
                 "aaaaaaaaaaaaaaaaaaa".into(),
                 &AuthorizationState::new("state".into(), None, APP_ID.into(), ALICE_ID),
+                SHORT_TTL,
             )
             .await;
 
@@ -332,6 +344,7 @@ mod integration_tests {
             .insert(
                 "aaaaaaaaaaaaaaaaaaa".into(),
                 &AuthorizationState::new("state".into(), None, APP_ID.into(), ALICE_ID),
+                SHORT_TTL,
             )
             .await;
 

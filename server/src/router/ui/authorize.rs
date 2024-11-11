@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use anyhow::Context;
 use axum::{
     extract::Query,
@@ -11,6 +13,9 @@ use crate::{
     entity::user::Entity as UserEntity,
     router::ui::helper::{encode_url, redirection},
 };
+
+// 10 mins
+const AUTHORIZATION_TTL: Duration = Duration::new(600, 0);
 
 pub(crate) enum ResponseError {
     ApplicationNotFound,
@@ -178,6 +183,7 @@ pub(super) async fn handle(
                         params.client_id,
                         user.id,
                     ),
+                    AUTHORIZATION_TTL,
                 )
                 .await;
             let redirection_url = encode_url(

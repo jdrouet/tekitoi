@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 mod memory;
 
 #[derive(Debug)]
@@ -38,9 +40,9 @@ impl Client {
         }
     }
 
-    pub async fn insert<V: serde::Serialize>(&self, key: String, value: &V) {
+    pub async fn insert<V: serde::Serialize>(&self, key: String, value: &V, ttl: Duration) {
         match self {
-            Self::Memory(inner) => inner.insert(key, value).await,
+            Self::Memory(inner) => inner.insert(key, value, ttl).await,
         }
     }
 }
