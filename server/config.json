@@ -1,0 +1,16 @@
+{
+  "applications": [
+    {
+      "client_id": "first-client-id",
+      "redirect_uri": "http://localhost:3000/auth/callback",
+      "client_secrets": ["first-secret-0", "first-secret-1"],
+      "users": [
+        {
+          "id": "e795410c-f7ad-4867-94a6-6917c100e35d",
+          "login": "alice",
+          "email": "alice@example.com"
+        }
+      ]
+    }
+  ]
+}

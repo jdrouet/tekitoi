@@ -1,6 +1,8 @@
 mod app;
+mod entity;
 mod helper;
 mod router;
+mod service;
 
 fn enable_tracing() {
     use tracing_subscriber::prelude::*;
