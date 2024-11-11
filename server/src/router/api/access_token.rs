@@ -1,9 +1,11 @@
+use std::default;
+
 use axum::extract::rejection::{BytesRejection, JsonRejection};
 use axum::http::header::{ACCEPT, CONTENT_TYPE};
 use axum::http::request::Parts;
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
-use axum::{Extension, Json};
+use axum::{Extension, Form, Json};
 use uuid::Uuid;
 
 use crate::router::ui::authorize::AuthorizationState;
@@ -74,6 +76,7 @@ impl IntoResponse for ResponseError {
 }
 
 #[derive(serde::Deserialize)]
+#[cfg_attr(test, derive(serde::Serialize))]
 pub(crate) struct RequestPayload {
     client_id: String,
     client_secret: String,
@@ -81,10 +84,11 @@ pub(crate) struct RequestPayload {
     redirect_uri: String,
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Default)]
 pub(crate) enum AcceptHeader {
     Json,
-    Default,
+    #[default]
+    Form,
 }
 
 #[axum::async_trait]
@@ -101,39 +105,41 @@ where
             .and_then(|value| value.to_str().ok())
         {
             Some("application/json") => Ok(AcceptHeader::Json),
-            Some(_other) => Err((
-                StatusCode::NOT_ACCEPTABLE,
-                "`Accept` header is requesting an incompatible type",
-            )),
-            None => Ok(AcceptHeader::Default),
+            Some("application/x-www-form-urlencoded") | None => Ok(AcceptHeader::Form),
+            Some(other) => {
+                tracing::warn!("received a request for accept header of type {other}");
+                Err((
+                    StatusCode::NOT_ACCEPTABLE,
+                    "`Accept` header is requesting an incompatible type",
+                ))
+            }
         }
     }
 }
 
 #[derive(serde::Serialize)]
+#[cfg_attr(test, derive(serde::Deserialize))]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum TokenType {
     Bearer,
 }
 
 #[derive(serde::Serialize)]
+#[cfg_attr(test, derive(serde::Deserialize))]
 pub(crate) struct ResponsePayload {
     #[serde(skip)]
     accept: AcceptHeader,
     access_token: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     scope: Option<String>,
-    token_stype: TokenType,
+    token_type: TokenType,
 }
 
 impl IntoResponse for ResponsePayload {
     fn into_response(self) -> axum::response::Response {
         match self.accept {
             AcceptHeader::Json => Json(self).into_response(),
-            AcceptHeader::Default => match serde_urlencoded::to_string(&self) {
-                Ok(value) => value.into_bytes().into_response(),
-                Err(_err) => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
-            },
+            AcceptHeader::Form => Form(self).into_response(),
         }
     }
 }
@@ -213,6 +219,142 @@ pub(super) async fn handle(
         accept,
         access_token,
         scope: state.scope,
-        token_stype: TokenType::Bearer,
+        token_type: TokenType::Bearer,
     })
+}
+
+#[cfg(test)]
+mod integration_tests {
+    use axum::{
+        body::Body,
+        http::{Request, StatusCode},
+    };
+    use http_body_util::BodyExt; // for `collect`
+
+    use crate::{
+        router::ui::authorize::AuthorizationState,
+        service::dataset::{ALICE_ID, APP_ID, REDIRECT_URI},
+    };
+
+    #[tokio::test]
+    async fn should_create_access_token_without_defined_type() {
+        crate::enable_tracing();
+
+        let app = crate::app::Application::test();
+        app.cache()
+            .insert(
+                "aaaaaaaaaaaaaaaaaaa".into(),
+                AuthorizationState::new("state".into(), None, APP_ID.into(), ALICE_ID).serialize(),
+            )
+            .await;
+
+        let req = Request::builder()
+            .uri("/api/access-token")
+            .header("Content-Type", "application/json")
+            .method("POST")
+            .body(Body::from(
+                serde_json::to_vec(&super::RequestPayload {
+                    client_id: APP_ID.into(),
+                    client_secret: "first-secret".into(),
+                    code: "aaaaaaaaaaaaaaaaaaa".into(),
+                    redirect_uri: REDIRECT_URI.into(),
+                })
+                .unwrap(),
+            ))
+            .unwrap();
+        let res = app.handle(req).await;
+        assert_eq!(res.status(), StatusCode::OK);
+
+        let ctype = res
+            .headers()
+            .get("Content-Type")
+            .and_then(|h| h.to_str().ok())
+            .unwrap();
+        assert_eq!(ctype, "application/x-www-form-urlencoded");
+        let body = res.into_body().collect().await.unwrap().to_bytes();
+        let body: super::ResponsePayload = serde_urlencoded::from_bytes(&body).unwrap();
+        assert!(body.scope.is_none())
+    }
+
+    #[tokio::test]
+    async fn should_create_access_token_with_json_type() {
+        crate::enable_tracing();
+
+        let app = crate::app::Application::test();
+        app.cache()
+            .insert(
+                "aaaaaaaaaaaaaaaaaaa".into(),
+                AuthorizationState::new("state".into(), None, APP_ID.into(), ALICE_ID).serialize(),
+            )
+            .await;
+
+        let req = Request::builder()
+            .uri("/api/access-token")
+            .header("Accept", "application/json")
+            .header("Content-Type", "application/json")
+            .method("POST")
+            .body(Body::from(
+                serde_json::to_vec(&super::RequestPayload {
+                    client_id: APP_ID.into(),
+                    client_secret: "first-secret".into(),
+                    code: "aaaaaaaaaaaaaaaaaaa".into(),
+                    redirect_uri: REDIRECT_URI.into(),
+                })
+                .unwrap(),
+            ))
+            .unwrap();
+        let res = app.handle(req).await;
+        assert_eq!(res.status(), StatusCode::OK);
+
+        let ctype = res
+            .headers()
+            .get("Content-Type")
+            .and_then(|h| h.to_str().ok())
+            .unwrap();
+        assert_eq!(ctype, "application/json");
+        let body = res.into_body().collect().await.unwrap().to_bytes();
+        let body: super::ResponsePayload = serde_json::from_slice(&body).unwrap();
+        assert!(body.scope.is_none())
+    }
+
+    #[tokio::test]
+    async fn should_create_access_token_with_form_type() {
+        crate::enable_tracing();
+
+        let app = crate::app::Application::test();
+        app.cache()
+            .insert(
+                "aaaaaaaaaaaaaaaaaaa".into(),
+                AuthorizationState::new("state".into(), None, APP_ID.into(), ALICE_ID).serialize(),
+            )
+            .await;
+
+        let req = Request::builder()
+            .uri("/api/access-token")
+            .header("Accept", "application/x-www-form-urlencoded")
+            .header("Content-Type", "application/json")
+            .method("POST")
+            .body(Body::from(
+                serde_json::to_vec(&super::RequestPayload {
+                    client_id: APP_ID.into(),
+                    client_secret: "first-secret".into(),
+                    code: "aaaaaaaaaaaaaaaaaaa".into(),
+                    redirect_uri: REDIRECT_URI.into(),
+                })
+                .unwrap(),
+            ))
+            .unwrap();
+        let res = app.handle(req).await;
+        assert_eq!(res.status(), StatusCode::OK);
+
+        let ctype = res
+            .headers()
+            .get("Content-Type")
+            .and_then(|h| h.to_str().ok())
+            .unwrap();
+        assert_eq!(ctype, "application/x-www-form-urlencoded");
+        let body = res.into_body().collect().await.unwrap().to_bytes();
+        let body: super::ResponsePayload = serde_urlencoded::from_bytes(&body).unwrap();
+        assert!(body.scope.is_none())
+    }
 }
