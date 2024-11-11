@@ -184,16 +184,6 @@ pub(crate) struct SessionState {
     pub scope: Option<String>,
 }
 
-impl SessionState {
-    pub fn new(client_id: String, user: Uuid, scope: Option<String>) -> Self {
-        Self {
-            client_id,
-            user,
-            scope,
-        }
-    }
-}
-
 pub(super) async fn handle(
     Extension(cache): Extension<crate::service::cache::Client>,
     Extension(dataset): Extension<crate::service::dataset::Client>,
@@ -222,7 +212,11 @@ pub(super) async fn handle(
     cache
         .insert(
             access_token.clone(),
-            &SessionState::new(state.client_id, state.user, state.scope.clone()),
+            &SessionState {
+                client_id: state.client_id,
+                user: state.user,
+                scope: state.scope.clone(),
+            },
             ACCESS_TOKEN_TTL,
         )
         .await;
@@ -260,7 +254,12 @@ mod integration_tests {
         app.cache()
             .insert(
                 "aaaaaaaaaaaaaaaaaaa".into(),
-                &AuthorizationState::new("state".into(), None, APP_ID.into(), ALICE_ID),
+                &AuthorizationState {
+                    state: "state".into(),
+                    scope: None,
+                    client_id: APP_ID.into(),
+                    user: ALICE_ID,
+                },
                 SHORT_TTL,
             )
             .await;
@@ -301,7 +300,12 @@ mod integration_tests {
         app.cache()
             .insert(
                 "aaaaaaaaaaaaaaaaaaa".into(),
-                &AuthorizationState::new("state".into(), None, APP_ID.into(), ALICE_ID),
+                &AuthorizationState {
+                    state: "state".into(),
+                    scope: None,
+                    client_id: APP_ID.into(),
+                    user: ALICE_ID,
+                },
                 SHORT_TTL,
             )
             .await;
@@ -343,7 +347,12 @@ mod integration_tests {
         app.cache()
             .insert(
                 "aaaaaaaaaaaaaaaaaaa".into(),
-                &AuthorizationState::new("state".into(), None, APP_ID.into(), ALICE_ID),
+                &AuthorizationState {
+                    state: "state".into(),
+                    scope: None,
+                    client_id: APP_ID.into(),
+                    user: ALICE_ID,
+                },
                 SHORT_TTL,
             )
             .await;

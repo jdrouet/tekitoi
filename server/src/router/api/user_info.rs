@@ -71,7 +71,11 @@ mod integration_tests {
         app.cache()
             .insert(
                 "aaaaaaaaaaaaaaaaaaa".into(),
-                &SessionState::new("client-id".into(), ALICE_ID, None),
+                &SessionState {
+                    client_id: "client-id".into(),
+                    user: ALICE_ID,
+                    scope: None,
+                },
                 LOCAL_TTL,
             )
             .await;
@@ -105,7 +109,11 @@ mod integration_tests {
         app.cache()
             .insert(
                 "aaaaaaaaaaaaaaaaaaa".into(),
-                &SessionState::new("unknown".into(), ALICE_ID, None),
+                &SessionState {
+                    client_id: "unknown".into(),
+                    user: ALICE_ID,
+                    scope: None,
+                },
                 LOCAL_TTL,
             )
             .await;
@@ -126,7 +134,11 @@ mod integration_tests {
         app.cache()
             .insert(
                 "aaaaaaaaaaaaaaaaaaa".into(),
-                &SessionState::new("client-id".into(), Uuid::new_v4(), None),
+                &SessionState {
+                    client_id: "unknown".into(),
+                    user: Uuid::new_v4(),
+                    scope: None,
+                },
                 LOCAL_TTL,
             )
             .await;

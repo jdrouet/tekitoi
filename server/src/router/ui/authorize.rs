@@ -149,17 +149,6 @@ pub(crate) struct AuthorizationState {
     pub user: Uuid,
 }
 
-impl AuthorizationState {
-    pub fn new(state: String, scope: Option<String>, client_id: String, user: Uuid) -> Self {
-        Self {
-            state,
-            scope,
-            client_id,
-            user,
-        }
-    }
-}
-
 pub(super) async fn handle(
     Extension(cache): Extension<crate::service::cache::Client>,
     Extension(dataset): Extension<crate::service::dataset::Client>,
@@ -177,12 +166,12 @@ pub(super) async fn handle(
             cache
                 .insert(
                     code.clone(),
-                    &AuthorizationState::new(
-                        params.state.clone(),
-                        params.scope,
-                        params.client_id,
-                        user.id,
-                    ),
+                    &AuthorizationState {
+                        state: params.state.clone(),
+                        scope: params.scope,
+                        client_id: params.client_id,
+                        user: user.id,
+                    },
                     AUTHORIZATION_TTL,
                 )
                 .await;
