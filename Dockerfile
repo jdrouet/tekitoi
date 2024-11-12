@@ -24,7 +24,7 @@ WORKDIR /code
 COPY Cargo.toml /code/Cargo.toml
 COPY Cargo.lock /code/Cargo.lock
 COPY server/Cargo.toml /code/server/Cargo.toml
-# COPY server/migrations /code/server/migrations
+COPY server/migrations /code/server/migrations
 COPY server/src /code/server/src
 COPY --from=server-vendor /code/.cargo /code/.cargo
 COPY --from=server-vendor /code/vendor /code/vendor
@@ -42,7 +42,7 @@ FROM alpine
 ENV SERVER_HOST=0.0.0.0
 ENV SERVER_PORT=3000
 ENV CONFIG_PATH=/data/config.json
-# ENV DATABASE_URL=/data/tekitoi.db
+ENV DATABASE_URL=/data/tekitoi.db
 
 # COPY --from=client-builder /code/dist /etc/tekitoi/client
 COPY --from=server-builder /code/target/release/tekitoi-server /bin/tekitoi-server
