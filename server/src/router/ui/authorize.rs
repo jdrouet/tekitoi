@@ -11,6 +11,7 @@ use uuid::Uuid;
 
 use crate::{
     entity::user::Entity as UserEntity,
+    helper::generate_token,
     router::ui::helper::{encode_url, redirection},
 };
 
@@ -21,6 +22,14 @@ pub(crate) enum ResponseError {
     ApplicationNotFound,
     InvalidRedirectUri,
     UnableToBuildPage,
+    Database,
+}
+
+impl From<sqlx::Error> for ResponseError {
+    fn from(value: sqlx::Error) -> Self {
+        tracing::error!(message = "database interaction failed", error = %value);
+        Self::Database
+    }
 }
 
 impl ResponseError {
@@ -28,7 +37,7 @@ impl ResponseError {
         match self {
             Self::ApplicationNotFound => StatusCode::NOT_FOUND,
             Self::InvalidRedirectUri => StatusCode::BAD_REQUEST,
-            Self::UnableToBuildPage => StatusCode::INTERNAL_SERVER_ERROR,
+            Self::UnableToBuildPage | Self::Database => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
 
@@ -36,7 +45,7 @@ impl ResponseError {
         match self {
             Self::ApplicationNotFound => "Application not found with provided client ID",
             Self::InvalidRedirectUri => "The provided redirect URI is invalid",
-            Self::UnableToBuildPage => "Something went wrong...",
+            Self::UnableToBuildPage | Self::Database => "Something went wrong...",
         }
     }
 
@@ -124,7 +133,7 @@ impl<'a> ResponseSuccess<'a> {
 
 #[derive(serde::Deserialize, serde::Serialize)]
 pub(crate) struct QueryParams {
-    client_id: String,
+    client_id: Uuid,
     redirect_uri: String,
     state: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -145,36 +154,34 @@ pub(crate) struct AuthorizationState {
     pub state: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub scope: Option<String>,
-    pub client_id: String,
+    pub client_id: Uuid,
     pub user: Uuid,
 }
 
 pub(super) async fn handle(
-    Extension(cache): Extension<crate::service::cache::Client>,
+    Extension(database): Extension<crate::service::database::Pool>,
     Extension(dataset): Extension<crate::service::dataset::Client>,
     Query(params): Query<QueryParams>,
 ) -> Result<Html<String>, ResponseError> {
+    let mut tx = database.as_ref().begin().await?;
     let app = dataset
-        .find(params.client_id.as_str())
+        .find(&params.client_id)
         .ok_or(ResponseError::ApplicationNotFound)?;
     if !app.check_redirect_uri(params.redirect_uri.as_str()) {
         return Err(ResponseError::InvalidRedirectUri);
     }
     let html = match params.user.and_then(|user_id| app.user(user_id)) {
         Some(user) => {
-            let code = uuid::Uuid::new_v4().to_string();
-            cache
-                .insert(
-                    code.clone(),
-                    &AuthorizationState {
-                        state: params.state.clone(),
-                        scope: params.scope,
-                        client_id: params.client_id,
-                        user: user.id,
-                    },
-                    AUTHORIZATION_TTL,
-                )
-                .await;
+            let code = generate_token(24);
+            let request = crate::entity::authorization::Create {
+                code: code.as_str(),
+                state: params.state.as_str(),
+                scope: params.scope.as_deref(),
+                client_id: params.client_id,
+                user_id: user.id,
+                time_to_live: AUTHORIZATION_TTL,
+            };
+            request.execute(&mut *tx).await?;
             let redirection_url = encode_url(
                 &params.redirect_uri,
                 [("code", code.as_str()), ("state", params.state.as_str())].into_iter(),
@@ -188,6 +195,7 @@ pub(super) async fn handle(
             })?
             .render(),
     };
+    tx.commit().await?;
     Ok(Html(html))
 }
 

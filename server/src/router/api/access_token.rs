@@ -9,8 +9,6 @@ use axum::response::IntoResponse;
 use axum::{Extension, Form, Json};
 use uuid::Uuid;
 
-use crate::router::ui::authorize::AuthorizationState;
-
 // 1 day
 const ACCESS_TOKEN_TTL: Duration = Duration::new(60 * 60 * 24, 0);
 
@@ -95,6 +93,14 @@ pub enum ResponseError {
     CodeNotFound,
     ApplicationNotFound,
     InvalidRedirectUri,
+    Database,
+}
+
+impl From<sqlx::Error> for ResponseError {
+    fn from(value: sqlx::Error) -> Self {
+        tracing::error!(message = "database interaction failed", error = %value);
+        Self::Database
+    }
 }
 
 impl IntoResponse for ResponseError {
@@ -107,7 +113,9 @@ impl IntoResponse for ResponseError {
 #[cfg_attr(test, derive(serde::Serialize))]
 pub(crate) struct RequestPayload {
     code: String,
+    #[allow(dead_code)]
     grant_type: String,
+    #[allow(dead_code)]
     code_verifier: String,
     redirect_uri: String,
 }
@@ -172,18 +180,6 @@ impl IntoResponse for ResponsePayload {
     }
 }
 
-fn generate_token() -> String {
-    use rand::distributions::{Alphanumeric, Distribution};
-    use rand::thread_rng;
-
-    let mut rng = thread_rng();
-    Alphanumeric
-        .sample_iter(&mut rng)
-        .take(42)
-        .map(char::from)
-        .collect()
-}
-
 #[derive(serde::Deserialize, serde::Serialize)]
 pub(crate) struct SessionState {
     pub client_id: String,
@@ -193,14 +189,15 @@ pub(crate) struct SessionState {
 }
 
 pub(super) async fn handle(
-    Extension(cache): Extension<crate::service::cache::Client>,
+    Extension(database): Extension<crate::service::database::Pool>,
     Extension(dataset): Extension<crate::service::dataset::Client>,
     accept: AcceptHeader,
     AnyContentType(payload): AnyContentType<RequestPayload>,
 ) -> Result<ResponsePayload, ResponseError> {
-    let state: AuthorizationState = cache
-        .remove(&payload.code)
-        .await
+    let mut tx = database.as_ref().begin().await?;
+    let state = crate::entity::authorization::FindByCode::new(payload.code.as_str())
+        .execute(&mut *tx)
+        .await?
         .ok_or(ResponseError::CodeNotFound)?;
 
     let app = dataset
@@ -210,18 +207,16 @@ pub(super) async fn handle(
         return Err(ResponseError::InvalidRedirectUri);
     }
 
-    let access_token = generate_token();
-    cache
-        .insert(
-            access_token.clone(),
-            &SessionState {
-                client_id: state.client_id,
-                user: state.user,
-                scope: state.scope.clone(),
-            },
-            ACCESS_TOKEN_TTL,
-        )
-        .await;
+    let access_token = crate::helper::generate_token(42);
+    let session = crate::entity::session::Create {
+        access_token: access_token.as_str(),
+        client_id: state.client_id,
+        user_id: state.user_id,
+        scope: state.scope.as_deref(),
+        time_to_live: ACCESS_TOKEN_TTL,
+    };
+    session.execute(&mut *tx).await?;
+    tx.commit().await?;
 
     Ok(ResponsePayload {
         accept,
@@ -241,10 +236,7 @@ mod integration_tests {
     };
     use http_body_util::BodyExt; // for `collect`
 
-    use crate::{
-        router::ui::authorize::AuthorizationState,
-        service::dataset::{ALICE_ID, APP_ID, REDIRECT_URI},
-    };
+    use crate::service::dataset::{ALICE_ID, APP_ID, REDIRECT_URI};
 
     const SHORT_TTL: Duration = Duration::new(5, 0);
 
@@ -252,19 +244,18 @@ mod integration_tests {
     async fn should_create_access_token_without_defined_type() {
         crate::enable_tracing();
 
-        let app = crate::app::Application::test();
-        app.cache()
-            .insert(
-                "aaaaaaaaaaaaaaaaaaa".into(),
-                &AuthorizationState {
-                    state: "state".into(),
-                    scope: None,
-                    client_id: APP_ID.into(),
-                    user: ALICE_ID,
-                },
-                SHORT_TTL,
-            )
-            .await;
+        let app = crate::app::Application::test().await;
+        crate::entity::authorization::Create {
+            code: "aaaaaaaaaaaaaaaaaaa",
+            state: "state",
+            scope: None,
+            client_id: APP_ID,
+            user_id: ALICE_ID,
+            time_to_live: SHORT_TTL,
+        }
+        .execute(app.database())
+        .await
+        .unwrap();
 
         let req = Request::builder()
             .uri("/api/access-token")
@@ -298,19 +289,18 @@ mod integration_tests {
     async fn should_create_access_token_with_json_type() {
         crate::enable_tracing();
 
-        let app = crate::app::Application::test();
-        app.cache()
-            .insert(
-                "aaaaaaaaaaaaaaaaaaa".into(),
-                &AuthorizationState {
-                    state: "state".into(),
-                    scope: None,
-                    client_id: APP_ID.into(),
-                    user: ALICE_ID,
-                },
-                SHORT_TTL,
-            )
-            .await;
+        let app = crate::app::Application::test().await;
+        crate::entity::authorization::Create {
+            code: "aaaaaaaaaaaaaaaaaaa",
+            state: "state",
+            scope: None,
+            client_id: APP_ID,
+            user_id: ALICE_ID,
+            time_to_live: SHORT_TTL,
+        }
+        .execute(app.database())
+        .await
+        .unwrap();
 
         let req = Request::builder()
             .uri("/api/access-token")
@@ -345,19 +335,19 @@ mod integration_tests {
     async fn should_create_access_token_with_form_type() {
         crate::enable_tracing();
 
-        let app = crate::app::Application::test();
-        app.cache()
-            .insert(
-                "aaaaaaaaaaaaaaaaaaa".into(),
-                &AuthorizationState {
-                    state: "state".into(),
-                    scope: None,
-                    client_id: APP_ID.into(),
-                    user: ALICE_ID,
-                },
-                SHORT_TTL,
-            )
-            .await;
+        let app = crate::app::Application::test().await;
+
+        crate::entity::authorization::Create {
+            code: "aaaaaaaaaaaaaaaaaaa",
+            state: "state",
+            scope: None,
+            client_id: APP_ID,
+            user_id: ALICE_ID,
+            time_to_live: SHORT_TTL,
+        }
+        .execute(app.database())
+        .await
+        .unwrap();
 
         let req = Request::builder()
             .uri("/api/access-token")

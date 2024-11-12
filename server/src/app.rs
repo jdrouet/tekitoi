@@ -9,7 +9,7 @@ pub(crate) struct Config {
     host: std::net::IpAddr,
     port: u16,
 
-    cache: crate::service::cache::Config,
+    database: crate::service::database::Config,
     dataset: crate::service::dataset::Config,
 }
 
@@ -19,15 +19,18 @@ impl Config {
             host: parse_env_or("HOST", IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)))?,
             port: parse_env_or("PORT", 3010)?,
 
-            cache: crate::service::cache::Config::from_env()?,
+            database: crate::service::database::Config::from_env()?,
             dataset: crate::service::dataset::Config::from_env()?,
         })
     }
 
-    pub fn build(self) -> anyhow::Result<Application> {
+    pub async fn build(self) -> anyhow::Result<Application> {
+        let database = self.database.build().await?;
+        database.upgrade().await?;
+
         Ok(Application {
             socket_address: SocketAddr::from((self.host, self.port)),
-            cache: self.cache.build()?,
+            database,
             dataset: self.dataset.build()?,
         })
     }
@@ -35,15 +38,15 @@ impl Config {
 
 pub(crate) struct Application {
     socket_address: SocketAddr,
-    cache: crate::service::cache::Client,
+    database: crate::service::database::Pool,
     dataset: crate::service::dataset::Client,
 }
 
 impl Application {
     fn router(&self) -> axum::Router {
         crate::router::create()
+            .layer(Extension(self.database.clone()))
             .layer(Extension(self.dataset.clone()))
-            .layer(Extension(self.cache.clone()))
             .layer(TraceLayer::new_for_http())
     }
 
@@ -58,16 +61,22 @@ impl Application {
 
 #[cfg(test)]
 impl Application {
-    pub(crate) fn test() -> Self {
+    pub(crate) async fn test() -> Self {
+        let database = crate::service::database::Config::default()
+            .build()
+            .await
+            .unwrap();
+        database.upgrade().await.unwrap();
+
         Self {
             socket_address: SocketAddr::from((Ipv4Addr::new(127, 0, 0, 1), 8080)),
-            cache: crate::service::cache::Client::test(),
+            database,
             dataset: crate::service::dataset::Client::test(),
         }
     }
 
-    pub(crate) fn cache(&self) -> &crate::service::cache::Client {
-        &self.cache
+    pub(crate) fn database(&self) -> &sqlx::SqlitePool {
+        self.database.as_ref()
     }
 
     pub(crate) async fn handle(

@@ -11,7 +11,7 @@ use crate::entity::user::Entity as UserEntity;
 use crate::helper::parse_env_or;
 
 #[cfg(test)]
-pub(crate) const APP_ID: &str = "client-id";
+pub(crate) const APP_ID: Uuid = Uuid::from_u128(0x00010000000000000000000000000000u128);
 #[cfg(test)]
 pub(crate) const REDIRECT_URI: &str = "http://service/redirect";
 #[cfg(test)]
@@ -26,14 +26,14 @@ struct RootConfig {
 
 #[derive(serde::Deserialize)]
 struct ApplicationConfig {
-    client_id: String,
+    client_id: Uuid,
     redirect_uri: String,
     client_secrets: HashSet<String>,
     users: Vec<UserEntity>,
 }
 
 impl ApplicationConfig {
-    fn build(self) -> (String, ApplicationClient) {
+    fn build(self) -> (Uuid, ApplicationClient) {
         (
             self.client_id,
             ApplicationClient {
@@ -101,10 +101,10 @@ impl ApplicationClient {
 }
 
 #[derive(Clone, Debug)]
-pub(crate) struct Client(Arc<HashMap<String, ApplicationClient>>);
+pub(crate) struct Client(Arc<HashMap<Uuid, ApplicationClient>>);
 
 impl Client {
-    pub fn find(&self, client_id: &str) -> Option<&ApplicationClient> {
+    pub fn find(&self, client_id: &Uuid) -> Option<&ApplicationClient> {
         self.0.get(client_id)
     }
 }
@@ -113,7 +113,7 @@ impl Client {
 impl Client {
     pub(crate) fn test() -> Self {
         Self(Arc::new(HashMap::from_iter([(
-            APP_ID.to_string(),
+            APP_ID,
             ApplicationClient {
                 client_secrets: HashSet::from_iter([
                     "first-secret".to_string(),

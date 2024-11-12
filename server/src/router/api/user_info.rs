@@ -2,7 +2,6 @@ use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use axum::{Extension, Json};
 
-use super::access_token::SessionState;
 use super::prelude::AuthorizationToken;
 use crate::entity::user::Entity as UserEntity;
 
@@ -11,6 +10,14 @@ pub(crate) enum ErrorResponse {
     UnknownApplication,
     TokenNotFound,
     UnknownUser,
+    Database,
+}
+
+impl From<sqlx::Error> for ErrorResponse {
+    fn from(value: sqlx::Error) -> Self {
+        tracing::error!(message = "database interaction failed", error = %value);
+        Self::Database
+    }
 }
 
 impl ErrorResponse {
@@ -22,6 +29,7 @@ impl ErrorResponse {
             ),
             Self::TokenNotFound => (StatusCode::UNAUTHORIZED, "invalid token"),
             Self::UnknownUser => (StatusCode::INTERNAL_SERVER_ERROR, "unknown relatd user"),
+            Self::Database => (StatusCode::INTERNAL_SERVER_ERROR, "something went wrong..."),
         }
     }
 }
@@ -35,18 +43,21 @@ impl IntoResponse for ErrorResponse {
 
 #[axum::debug_handler]
 pub(super) async fn handle(
-    Extension(cache): Extension<crate::service::cache::Client>,
+    Extension(database): Extension<crate::service::database::Pool>,
     Extension(dataset): Extension<crate::service::dataset::Client>,
     AuthorizationToken(token): AuthorizationToken,
 ) -> Result<Json<UserEntity>, ErrorResponse> {
-    let session: SessionState = cache
-        .get(token.token())
-        .await
-        .ok_or(ErrorResponse::TokenNotFound)?;
+    let session = crate::entity::session::FindByAccessToken::new(token.token())
+        .execute(database.as_ref())
+        .await?;
+    let session = session.ok_or(ErrorResponse::TokenNotFound)?;
+
     let app = dataset
         .find(&session.client_id)
         .ok_or(ErrorResponse::UnknownApplication)?;
-    let user = app.user(session.user).ok_or(ErrorResponse::UnknownUser)?;
+    let user = app
+        .user(session.user_id)
+        .ok_or(ErrorResponse::UnknownUser)?;
 
     Ok(Json(user.clone()))
 }
@@ -61,24 +72,24 @@ mod integration_tests {
     };
     use uuid::Uuid;
 
-    use crate::{router::api::access_token::SessionState, service::dataset::ALICE_ID};
+    use crate::service::dataset::{ALICE_ID, APP_ID};
 
     const LOCAL_TTL: Duration = Duration::new(10, 0);
 
     #[tokio::test]
     async fn should_return_user() {
-        let app = crate::app::Application::test();
-        app.cache()
-            .insert(
-                "aaaaaaaaaaaaaaaaaaa".into(),
-                &SessionState {
-                    client_id: "client-id".into(),
-                    user: ALICE_ID,
-                    scope: None,
-                },
-                LOCAL_TTL,
-            )
-            .await;
+        crate::enable_tracing();
+        let app = crate::app::Application::test().await;
+        crate::entity::session::Create {
+            access_token: "aaaaaaaaaaaaaaaaaaa".into(),
+            client_id: APP_ID,
+            user_id: ALICE_ID,
+            scope: None,
+            time_to_live: LOCAL_TTL,
+        }
+        .execute(app.database())
+        .await
+        .unwrap();
 
         let req = Request::builder()
             .uri("/api/user-info")
@@ -92,7 +103,8 @@ mod integration_tests {
 
     #[tokio::test]
     async fn missing_access_token_should_fail() {
-        let app = crate::app::Application::test();
+        crate::enable_tracing();
+        let app = crate::app::Application::test().await;
 
         let req = Request::builder()
             .uri("/api/user-info")
@@ -105,18 +117,19 @@ mod integration_tests {
 
     #[tokio::test]
     async fn unknown_app_should_fail() {
-        let app = crate::app::Application::test();
-        app.cache()
-            .insert(
-                "aaaaaaaaaaaaaaaaaaa".into(),
-                &SessionState {
-                    client_id: "unknown".into(),
-                    user: ALICE_ID,
-                    scope: None,
-                },
-                LOCAL_TTL,
-            )
-            .await;
+        crate::enable_tracing();
+
+        let app = crate::app::Application::test().await;
+        crate::entity::session::Create {
+            access_token: "aaaaaaaaaaaaaaaaaaa".into(),
+            client_id: Uuid::new_v4(),
+            user_id: ALICE_ID,
+            scope: None,
+            time_to_live: LOCAL_TTL,
+        }
+        .execute(app.database())
+        .await
+        .unwrap();
 
         let req = Request::builder()
             .uri("/api/user-info")
@@ -130,18 +143,18 @@ mod integration_tests {
 
     #[tokio::test]
     async fn unknown_user_should_fail() {
-        let app = crate::app::Application::test();
-        app.cache()
-            .insert(
-                "aaaaaaaaaaaaaaaaaaa".into(),
-                &SessionState {
-                    client_id: "unknown".into(),
-                    user: Uuid::new_v4(),
-                    scope: None,
-                },
-                LOCAL_TTL,
-            )
-            .await;
+        crate::enable_tracing();
+        let app = crate::app::Application::test().await;
+        crate::entity::session::Create {
+            access_token: "aaaaaaaaaaaaaaaaaaa".into(),
+            client_id: APP_ID,
+            user_id: Uuid::new_v4(),
+            scope: None,
+            time_to_live: LOCAL_TTL,
+        }
+        .execute(app.database())
+        .await
+        .unwrap();
 
         let req = Request::builder()
             .uri("/api/user-info")

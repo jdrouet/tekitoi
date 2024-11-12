@@ -27,3 +27,15 @@ where
         Err(_) => Ok(default_value),
     }
 }
+
+pub(crate) fn generate_token(length: usize) -> String {
+    use rand::distributions::{Alphanumeric, Distribution};
+    use rand::thread_rng;
+
+    let mut rng = thread_rng();
+    Alphanumeric
+        .sample_iter(&mut rng)
+        .take(length)
+        .map(char::from)
+        .collect()
+}

@@ -27,7 +27,7 @@ async fn main() -> anyhow::Result<()> {
     enable_tracing();
 
     let config = app::Config::from_env()?;
-    let app = config.build()?;
+    let app = config.build().await?;
     app.run().await?;
 
     Ok(())
