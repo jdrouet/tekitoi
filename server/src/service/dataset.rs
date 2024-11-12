@@ -1,7 +1,6 @@
 use std::{
-    collections::{HashMap, HashSet},
+    collections::HashSet,
     path::{Path, PathBuf},
-    sync::Arc,
 };
 
 use anyhow::Context;
@@ -20,7 +19,7 @@ pub(crate) const ALICE_ID: Uuid = Uuid::from_u128(0x0000000000000000000000000000
 pub(crate) const BOB_ID: Uuid = Uuid::from_u128(0x00000000000000000000000000000001u128);
 
 #[derive(serde::Deserialize)]
-struct RootConfig {
+pub(crate) struct RootConfig {
     applications: Vec<ApplicationConfig>,
 }
 
@@ -30,19 +29,6 @@ struct ApplicationConfig {
     redirect_uri: String,
     client_secrets: HashSet<String>,
     users: Vec<UserEntity>,
-}
-
-impl ApplicationConfig {
-    fn build(self) -> (Uuid, ApplicationClient) {
-        (
-            self.client_id,
-            ApplicationClient {
-                redirect_uri: self.redirect_uri,
-                client_secrets: self.client_secrets,
-                users: self.users.into_iter().map(|user| (user.id, user)).collect(),
-            },
-        )
-    }
 }
 
 impl RootConfig {
@@ -66,79 +52,63 @@ impl Config {
         })
     }
 
-    pub(crate) fn build(self) -> anyhow::Result<Client> {
-        let root = RootConfig::from_path(self.path)?;
-        let entries = HashMap::from_iter(root.applications.into_iter().map(|app| app.build()));
-        Ok(Client(Arc::new(entries)))
-    }
-}
-
-#[derive(Debug)]
-pub(crate) struct ApplicationClient {
-    #[allow(unused)]
-    client_secrets: HashSet<String>,
-    redirect_uri: String,
-    users: HashMap<Uuid, UserEntity>,
-}
-
-impl ApplicationClient {
-    pub(crate) fn check_redirect_uri(&self, redirect_uri: &str) -> bool {
-        self.redirect_uri.eq(redirect_uri)
-    }
-
-    #[allow(unused)]
-    pub(crate) fn check_client_secret(&self, secret: &str) -> bool {
-        self.client_secrets.contains(secret)
-    }
-
-    pub(crate) fn users(&self) -> impl Iterator<Item = &UserEntity> {
-        self.users.values()
-    }
-
-    pub(crate) fn user(&self, user_id: Uuid) -> Option<&UserEntity> {
-        self.users.get(&user_id)
-    }
-}
-
-#[derive(Clone, Debug)]
-pub(crate) struct Client(Arc<HashMap<Uuid, ApplicationClient>>);
-
-impl Client {
-    pub fn find(&self, client_id: &Uuid) -> Option<&ApplicationClient> {
-        self.0.get(client_id)
+    pub(crate) async fn synchronize(
+        &self,
+        database: &crate::service::database::Pool,
+    ) -> anyhow::Result<()> {
+        let root = RootConfig::from_path(&self.path)?;
+        root.synchronize(database).await
     }
 }
 
 #[cfg(test)]
-impl Client {
+impl RootConfig {
     pub(crate) fn test() -> Self {
-        Self(Arc::new(HashMap::from_iter([(
-            APP_ID,
-            ApplicationClient {
-                client_secrets: HashSet::from_iter([
-                    "first-secret".to_string(),
-                    "second-secret".to_string(),
-                ]),
-                redirect_uri: "http://service/redirect".into(),
-                users: HashMap::from_iter([
-                    (
-                        ALICE_ID,
-                        UserEntity {
-                            id: ALICE_ID,
-                            login: "alice".into(),
-                            email: "alice@example.com".into(),
-                        },
-                    ),
-                    (
-                        BOB_ID,
-                        UserEntity {
-                            id: BOB_ID,
-                            login: "bob".into(),
-                            email: "bob@example.com".into(),
-                        },
-                    ),
-                ]),
-            },
-        )])))
+        RootConfig {
+            applications: vec![ApplicationConfig {
+                client_id: APP_ID,
+                redirect_uri: REDIRECT_URI.into(),
+                client_secrets: HashSet::from_iter([String::from("secret")]),
+                users: vec![
+                    UserEntity {
+                        id: ALICE_ID,
+                        login: "alice".into(),
+                        email: "alice@gmail.com".into(),
+                    },
+                    UserEntity {
+                        id: BOB_ID,
+                        login: "bob".into(),
+                        email: "bob@gmail.com".into(),
+                    },
+                ],
+            }],
+        }
+    }
+}
+
+impl RootConfig {
+    pub(crate) async fn synchronize(
+        &self,
+        database: &crate::service::database::Pool,
+    ) -> anyhow::Result<()> {
+        tracing::debug!("executing synchro");
+        let mut tx = database.as_ref().begin().await?;
+        for app in self.applications.iter() {
+            crate::entity::application::Upsert::new(
+                app.client_id,
+                &app.client_secrets,
+                &app.redirect_uri,
+            )
+            .execute(&mut *tx)
+            .await?;
+
+            for user in app.users.iter() {
+                crate::entity::user::Upsert::new(user.id, app.client_id, &user.login, &user.email)
+                    .execute(&mut *tx)
+                    .await?;
+            }
+        }
+        tx.commit().await?;
+        Ok(())
     }
 }

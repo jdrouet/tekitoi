@@ -7,7 +7,6 @@ use crate::entity::user::Entity as UserEntity;
 
 #[derive(Debug)]
 pub(crate) enum ErrorResponse {
-    UnknownApplication,
     TokenNotFound,
     UnknownUser,
     Database,
@@ -23,10 +22,6 @@ impl From<sqlx::Error> for ErrorResponse {
 impl ErrorResponse {
     fn status_and_message(&self) -> (StatusCode, &'static str) {
         match self {
-            Self::UnknownApplication => (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "unknown related application",
-            ),
             Self::TokenNotFound => (StatusCode::UNAUTHORIZED, "invalid token"),
             Self::UnknownUser => (StatusCode::INTERNAL_SERVER_ERROR, "unknown relatd user"),
             Self::Database => (StatusCode::INTERNAL_SERVER_ERROR, "something went wrong..."),
@@ -44,22 +39,21 @@ impl IntoResponse for ErrorResponse {
 #[axum::debug_handler]
 pub(super) async fn handle(
     Extension(database): Extension<crate::service::database::Pool>,
-    Extension(dataset): Extension<crate::service::dataset::Client>,
     AuthorizationToken(token): AuthorizationToken,
 ) -> Result<Json<UserEntity>, ErrorResponse> {
+    let mut tx = database.as_ref().begin().await?;
     let session = crate::entity::session::FindByAccessToken::new(token.token())
-        .execute(database.as_ref())
+        .execute(&mut *tx)
         .await?;
     let session = session.ok_or(ErrorResponse::TokenNotFound)?;
 
-    let app = dataset
-        .find(&session.client_id)
-        .ok_or(ErrorResponse::UnknownApplication)?;
-    let user = app
-        .user(session.user_id)
-        .ok_or(ErrorResponse::UnknownUser)?;
+    let user = crate::entity::user::FindById::new(session.user_id, session.client_id)
+        .execute(&mut *tx)
+        .await?;
 
-    Ok(Json(user.clone()))
+    let user = user.ok_or(ErrorResponse::UnknownUser)?;
+
+    Ok(Json(user))
 }
 
 #[cfg(test)]

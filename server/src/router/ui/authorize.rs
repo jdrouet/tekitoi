@@ -20,6 +20,7 @@ const AUTHORIZATION_TTL: Duration = Duration::new(600, 0);
 
 pub(crate) enum ResponseError {
     ApplicationNotFound,
+    UserNotFound,
     InvalidRedirectUri,
     UnableToBuildPage,
     Database,
@@ -35,7 +36,7 @@ impl From<sqlx::Error> for ResponseError {
 impl ResponseError {
     fn status(&self) -> StatusCode {
         match self {
-            Self::ApplicationNotFound => StatusCode::NOT_FOUND,
+            Self::ApplicationNotFound | Self::UserNotFound => StatusCode::NOT_FOUND,
             Self::InvalidRedirectUri => StatusCode::BAD_REQUEST,
             Self::UnableToBuildPage | Self::Database => StatusCode::INTERNAL_SERVER_ERROR,
         }
@@ -44,6 +45,7 @@ impl ResponseError {
     fn message(&self) -> &'static str {
         match self {
             Self::ApplicationNotFound => "Application not found with provided client ID",
+            Self::UserNotFound => "User not found with provided client ID",
             Self::InvalidRedirectUri => "The provided redirect URI is invalid",
             Self::UnableToBuildPage | Self::Database => "Something went wrong...",
         }
@@ -160,18 +162,23 @@ pub(crate) struct AuthorizationState {
 
 pub(super) async fn handle(
     Extension(database): Extension<crate::service::database::Pool>,
-    Extension(dataset): Extension<crate::service::dataset::Client>,
     Query(params): Query<QueryParams>,
 ) -> Result<Html<String>, ResponseError> {
     let mut tx = database.as_ref().begin().await?;
-    let app = dataset
-        .find(&params.client_id)
-        .ok_or(ResponseError::ApplicationNotFound)?;
-    if !app.check_redirect_uri(params.redirect_uri.as_str()) {
+    let app = crate::entity::application::FindById::new(params.client_id)
+        .execute(&mut *tx)
+        .await?;
+    let app = app.ok_or(ResponseError::ApplicationNotFound)?;
+    if !app.redirect_uri.eq(params.redirect_uri.as_str()) {
         return Err(ResponseError::InvalidRedirectUri);
     }
-    let html = match params.user.and_then(|user_id| app.user(user_id)) {
-        Some(user) => {
+    let html = match params.user {
+        Some(user_id) => {
+            let user = crate::entity::user::FindById::new(user_id, app.id)
+                .execute(&mut *tx)
+                .await?;
+            let user = user.ok_or(ResponseError::UserNotFound)?;
+
             let code = generate_token(24);
             let request = crate::entity::authorization::Create {
                 code: code.as_str(),
@@ -188,12 +195,17 @@ pub(super) async fn handle(
             );
             redirection(redirection_url)
         }
-        None => ResponseSuccess::new(params, app.users())
-            .map_err(|err| {
-                tracing::error!(message = "unable to generate page", source = %err);
-                ResponseError::UnableToBuildPage
-            })?
-            .render(),
+        None => {
+            let users = crate::entity::user::ListForApplication::new(app.id)
+                .execute(&mut *tx)
+                .await?;
+            ResponseSuccess::new(params, users.iter())
+                .map_err(|err| {
+                    tracing::error!(message = "unable to generate page", source = %err);
+                    ResponseError::UnableToBuildPage
+                })?
+                .render()
+        }
     };
     tx.commit().await?;
     Ok(Html(html))

@@ -190,7 +190,6 @@ pub(crate) struct SessionState {
 
 pub(super) async fn handle(
     Extension(database): Extension<crate::service::database::Pool>,
-    Extension(dataset): Extension<crate::service::dataset::Client>,
     accept: AcceptHeader,
     AnyContentType(payload): AnyContentType<RequestPayload>,
 ) -> Result<ResponsePayload, ResponseError> {
@@ -200,10 +199,11 @@ pub(super) async fn handle(
         .await?
         .ok_or(ResponseError::CodeNotFound)?;
 
-    let app = dataset
-        .find(&state.client_id)
-        .ok_or(ResponseError::ApplicationNotFound)?;
-    if !app.check_redirect_uri(payload.redirect_uri.as_str()) {
+    let app = crate::entity::application::FindById::new(state.client_id)
+        .execute(&mut *tx)
+        .await?;
+    let app = app.ok_or(ResponseError::ApplicationNotFound)?;
+    if !app.redirect_uri.eq(payload.redirect_uri.as_str()) {
         return Err(ResponseError::InvalidRedirectUri);
     }
 

@@ -28,10 +28,11 @@ impl Config {
         let database = self.database.build().await?;
         database.upgrade().await?;
 
+        self.dataset.synchronize(&database).await?;
+
         Ok(Application {
             socket_address: SocketAddr::from((self.host, self.port)),
             database,
-            dataset: self.dataset.build()?,
         })
     }
 }
@@ -39,14 +40,12 @@ impl Config {
 pub(crate) struct Application {
     socket_address: SocketAddr,
     database: crate::service::database::Pool,
-    dataset: crate::service::dataset::Client,
 }
 
 impl Application {
     fn router(&self) -> axum::Router {
         crate::router::create()
             .layer(Extension(self.database.clone()))
-            .layer(Extension(self.dataset.clone()))
             .layer(TraceLayer::new_for_http())
     }
 
@@ -68,10 +67,14 @@ impl Application {
             .unwrap();
         database.upgrade().await.unwrap();
 
+        crate::service::dataset::RootConfig::test()
+            .synchronize(&database)
+            .await
+            .unwrap();
+
         Self {
             socket_address: SocketAddr::from((Ipv4Addr::new(127, 0, 0, 1), 8080)),
             database,
-            dataset: crate::service::dataset::Client::test(),
         }
     }
 
