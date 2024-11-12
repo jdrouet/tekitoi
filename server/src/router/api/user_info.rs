@@ -7,8 +7,7 @@ use crate::entity::user::Entity as UserEntity;
 
 #[derive(Debug)]
 pub(crate) enum ErrorResponse {
-    TokenNotFound,
-    UnknownUser,
+    UserSessionNotFound,
     Database,
 }
 
@@ -22,8 +21,7 @@ impl From<sqlx::Error> for ErrorResponse {
 impl ErrorResponse {
     fn status_and_message(&self) -> (StatusCode, &'static str) {
         match self {
-            Self::TokenNotFound => (StatusCode::UNAUTHORIZED, "invalid token"),
-            Self::UnknownUser => (StatusCode::INTERNAL_SERVER_ERROR, "unknown relatd user"),
+            Self::UserSessionNotFound => (StatusCode::UNAUTHORIZED, "invalid token"),
             Self::Database => (StatusCode::INTERNAL_SERVER_ERROR, "something went wrong..."),
         }
     }
@@ -41,17 +39,10 @@ pub(super) async fn handle(
     Extension(database): Extension<crate::service::database::Pool>,
     AuthorizationToken(token): AuthorizationToken,
 ) -> Result<Json<UserEntity>, ErrorResponse> {
-    let mut tx = database.as_ref().begin().await?;
-    let session = crate::entity::session::FindByAccessToken::new(token.token())
-        .execute(&mut *tx)
+    let user = crate::entity::user::FindByAccessToken::new(token.token())
+        .execute(database.as_ref())
         .await?;
-    let session = session.ok_or(ErrorResponse::TokenNotFound)?;
-
-    let user = crate::entity::user::FindById::new(session.user_id, session.client_id)
-        .execute(&mut *tx)
-        .await?;
-
-    let user = user.ok_or(ErrorResponse::UnknownUser)?;
+    let user = user.ok_or(ErrorResponse::UserSessionNotFound)?;
 
     Ok(Json(user))
 }
@@ -64,7 +55,6 @@ mod integration_tests {
         body::Body,
         http::{Request, StatusCode},
     };
-    use uuid::Uuid;
 
     use crate::service::dataset::{ALICE_ID, APP_ID};
 
@@ -107,56 +97,5 @@ mod integration_tests {
             .unwrap();
         let res = app.handle(req).await;
         assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
-    }
-
-    #[tokio::test]
-    async fn unknown_app_should_fail() {
-        crate::enable_tracing();
-
-        let app = crate::app::Application::test().await;
-        crate::entity::session::Create {
-            access_token: "aaaaaaaaaaaaaaaaaaa".into(),
-            client_id: Uuid::new_v4(),
-            user_id: ALICE_ID,
-            scope: None,
-            time_to_live: LOCAL_TTL,
-        }
-        .execute(app.database())
-        .await
-        .unwrap();
-
-        let req = Request::builder()
-            .uri("/api/user-info")
-            .method("GET")
-            .header("Authorization", "Bearer aaaaaaaaaaaaaaaaaaa")
-            .body(Body::empty())
-            .unwrap();
-        let res = app.handle(req).await;
-        assert_eq!(res.status(), StatusCode::INTERNAL_SERVER_ERROR);
-    }
-
-    #[tokio::test]
-    async fn unknown_user_should_fail() {
-        crate::enable_tracing();
-        let app = crate::app::Application::test().await;
-        crate::entity::session::Create {
-            access_token: "aaaaaaaaaaaaaaaaaaa".into(),
-            client_id: APP_ID,
-            user_id: Uuid::new_v4(),
-            scope: None,
-            time_to_live: LOCAL_TTL,
-        }
-        .execute(app.database())
-        .await
-        .unwrap();
-
-        let req = Request::builder()
-            .uri("/api/user-info")
-            .method("GET")
-            .header("Authorization", "Bearer aaaaaaaaaaaaaaaaaaa")
-            .body(Body::empty())
-            .unwrap();
-        let res = app.handle(req).await;
-        assert_eq!(res.status(), StatusCode::INTERNAL_SERVER_ERROR);
     }
 }

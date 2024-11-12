@@ -56,6 +56,34 @@ returning id, login, email"#,
     }
 }
 
+pub struct FindByAccessToken<'a> {
+    access_token: &'a str,
+}
+
+impl<'a> FindByAccessToken<'a> {
+    pub fn new(access_token: &'a str) -> Self {
+        Self { access_token }
+    }
+
+    pub async fn execute<'c, E: sqlx::Executor<'c, Database = sqlx::Sqlite>>(
+        &self,
+        executor: E,
+    ) -> Result<Option<Entity>, sqlx::Error> {
+        let now = chrono::Utc::now();
+        sqlx::query_as(
+            r#"select users.id, users.login, users.email
+from users
+join sessions on sessions.user_id = users.id
+where sessions.access_token = $1 and sessions.valid_until > $2
+limit 1"#,
+        )
+        .bind(self.access_token)
+        .bind(now)
+        .fetch_optional(executor)
+        .await
+    }
+}
+
 pub struct FindById {
     id: Uuid,
     application_id: Uuid,

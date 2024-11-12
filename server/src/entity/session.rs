@@ -53,30 +53,3 @@ returning access_token, client_id, user_id, scope"#,
         .await
     }
 }
-
-pub(crate) struct FindByAccessToken<'a> {
-    pub access_token: &'a str,
-}
-
-impl<'a> FindByAccessToken<'a> {
-    pub fn new(access_token: &'a str) -> Self {
-        Self { access_token }
-    }
-
-    pub async fn execute<'c, E: sqlx::Executor<'c, Database = sqlx::Sqlite>>(
-        &self,
-        executor: E,
-    ) -> Result<Option<Entity>, sqlx::Error> {
-        let now = chrono::Utc::now();
-        sqlx::query_as(
-            r#"select access_token, client_id, user_id, scope
-from sessions
-where access_token = $1 and valid_until > $2
-limit 1"#,
-        )
-        .bind(self.access_token)
-        .bind(now)
-        .fetch_optional(executor)
-        .await
-    }
-}
