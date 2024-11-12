@@ -1,7 +1,7 @@
 use axum::Extension;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use tokio::net::TcpListener;
-use tower_http::trace::TraceLayer;
+use tower_http::{compression::CompressionLayer, trace::TraceLayer};
 
 use crate::helper::parse_env_or;
 
@@ -46,6 +46,7 @@ impl Application {
     fn router(&self) -> axum::Router {
         crate::router::create()
             .layer(Extension(self.database.clone()))
+            .layer(CompressionLayer::new())
             .layer(TraceLayer::new_for_http())
     }
 

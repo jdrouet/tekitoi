@@ -8,8 +8,7 @@ another-html-builder = { version = "0.1" }
 anyhow = { version = "1.0" }
 axum = { version = "0.7", features = ["macros"] }
 axum-extra = { version = "0.9", features = ["cookie", "typed-header"] }
-chrono = { version = "0.4.38", default-features = false, features = ["now"] }
-html-escape = "0.2"
+chrono = { version = "0.4", default-features = false, features = ["now"] }
 rand = { version = "0.8", default-features = false, features = [
     "std",
     "std_rng",
@@ -24,7 +23,10 @@ sqlx = { version = "0.8", features = [
     "uuid",
 ] }
 tokio = { version = "1.41", features = ["macros", "rt-multi-thread"] }
-tower-http = { version = "0.6", default-features = false, features = ["trace"] }
+tower-http = { version = "0.6", default-features = false, features = [
+    "compression-full",
+    "trace",
+] }
 tracing = { version = "0.1" }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 uuid = { version = "1.11", features = ["serde", "v4"] }

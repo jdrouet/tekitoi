@@ -1,5 +1,6 @@
 use std::time::Duration;
 
+use another_html_builder::{Body, Buffer};
 use anyhow::Context;
 use axum::{
     extract::Query,
@@ -17,6 +18,24 @@ use crate::{
 
 // 10 mins
 const AUTHORIZATION_TTL: Duration = Duration::new(600, 0);
+
+fn render_head<'b>(buf: Buffer<String, Body<'b>>) -> Buffer<String, Body<'b>> {
+    buf.node("head").content(|buf| {
+        buf.node("meta")
+            .attr(("charset", "utf-8"))
+            .close()
+            .node("meta")
+            .attr(("name", "viewport"))
+            .attr(("content", "width=device-width, initial-scale=1"))
+            .close()
+            .node("title")
+            .content(|buf| buf.text("🔑 Authorization"))
+            .node("link")
+            .attr(("rel", "stylesheet"))
+            .attr(("href", crate::router::asset::STYLE_PATH))
+            .close()
+    })
+}
 
 pub(crate) enum ResponseError {
     ApplicationNotFound,
@@ -44,9 +63,9 @@ impl ResponseError {
 
     fn message(&self) -> &'static str {
         match self {
-            Self::ApplicationNotFound => "Application not found with provided client ID",
-            Self::UserNotFound => "User not found with provided client ID",
-            Self::InvalidRedirectUri => "The provided redirect URI is invalid",
+            Self::ApplicationNotFound => "Application not found with provided client ID.",
+            Self::UserNotFound => "User not found with provided client ID.",
+            Self::InvalidRedirectUri => "The provided redirect URI is invalid.",
             Self::UnableToBuildPage | Self::Database => "Something went wrong...",
         }
     }
@@ -57,18 +76,19 @@ impl ResponseError {
             .node("html")
             .attr(("lang", "en"))
             .content(|buf| {
-                buf.node("head")
-                    .content(|buf| {
-                        buf.node("meta")
-                            .attr(("charset", "utf-8"))
-                            .close()
-                            .node("meta")
-                            .attr(("name", "viewport"))
-                            .attr(("content", "width=device-width, initial-scale=1"))
-                            .close()
-                    })
-                    .node("body")
-                    .content(|buf| buf.node("div").content(|buf| buf.text(self.message())))
+                let buf = render_head(buf);
+                buf.node("body").content(|buf| {
+                    buf.node("div")
+                        .attr(("class", "card shadow"))
+                        .content(|buf| {
+                            buf.node("div")
+                                .attr(("class", "card-header text-center"))
+                                .content(|buf| buf.text("Error"))
+                                .node("div")
+                                .attr(("class", "card-body"))
+                                .content(|buf| buf.text(self.message()))
+                        })
+                })
             })
             .into_inner()
     }
@@ -100,34 +120,35 @@ impl<'a> ResponseSuccess<'a> {
         })
     }
 
+    fn render_body<'b>(&self, buf: Buffer<String, Body<'b>>) -> Buffer<String, Body<'b>> {
+        buf.node("body").content(|buf| {
+            buf.node("main")
+                .attr(("class", "card shadow"))
+                .content(|buf| {
+                    let buf = buf
+                        .node("div")
+                        .attr(("class", "card-header text-center"))
+                        .content(|buf| buf.text("Authentication"));
+                    buf.node("div").attr(("class", "list")).content(|buf| {
+                        self.users.iter().fold(buf, |buf, (login, link)| {
+                            buf.node("a")
+                                .attr(("class", "list-item"))
+                                .attr(("href", link.as_str()))
+                                .content(|buf| buf.text("Login as ").text(login))
+                        })
+                    })
+                })
+        })
+    }
+
     fn render(&self) -> String {
         another_html_builder::Buffer::default()
             .doctype()
             .node("html")
             .attr(("lang", "en"))
             .content(|buf| {
-                buf.node("head")
-                    .content(|buf| {
-                        buf.node("meta")
-                            .attr(("charset", "utf-8"))
-                            .close()
-                            .node("meta")
-                            .attr(("name", "viewport"))
-                            .attr(("content", "width=device-width, initial-scale=1"))
-                            .close()
-                    })
-                    .node("body")
-                    .content(|buf| {
-                        buf.node("div").content(|buf| {
-                            self.users.iter().fold(buf, |buf, (login, link)| {
-                                buf.node("p").content(|buf| {
-                                    buf.node("a")
-                                        .attr(("href", link.as_str()))
-                                        .content(|buf| buf.text(login))
-                                })
-                            })
-                        })
-                    })
+                let buf = render_head(buf);
+                self.render_body(buf)
             })
             .into_inner()
     }

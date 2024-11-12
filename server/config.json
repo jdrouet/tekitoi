@@ -9,6 +9,11 @@
           "id": "e795410c-f7ad-4867-94a6-6917c100e35d",
           "login": "alice",
           "email": "alice@example.com"
+        },
+        {
+          "id": "e795410c-f7ad-4867-94a6-6917c100e35e",
+          "login": "bob",
+          "email": "bob@example.com"
         }
       ]
     }
