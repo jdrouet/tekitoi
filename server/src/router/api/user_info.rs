@@ -65,7 +65,7 @@ mod integration_tests {
         crate::enable_tracing();
         let app = crate::app::Application::test().await;
         crate::entity::session::Create {
-            access_token: "aaaaaaaaaaaaaaaaaaa".into(),
+            access_token: "aaaaaaaaaaaaaaaaaaa",
             client_id: APP_ID,
             user_id: ALICE_ID,
             scope: None,
