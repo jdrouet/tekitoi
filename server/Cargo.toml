@@ -9,7 +9,10 @@ anyhow = { version = "1.0" }
 axum = { version = "0.7", features = ["macros"] }
 axum-extra = { version = "0.9", features = ["cookie", "typed-header"] }
 base64 = "0.22.1"
-chrono = { version = "0.4", default-features = false, features = ["now"] }
+chrono = { version = "0.4", default-features = false, features = [
+    "now",
+    "serde",
+] }
 rand = { version = "0.8", default-features = false, features = [
     "std",
     "std_rng",
