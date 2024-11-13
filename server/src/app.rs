@@ -62,6 +62,10 @@ impl Application {
 #[cfg(test)]
 impl Application {
     pub(crate) async fn test() -> Self {
+        Self::test_with_port(8080).await
+    }
+
+    pub(crate) async fn test_with_port(port: u16) -> Self {
         let database = crate::service::database::Config::default()
             .build()
             .await
@@ -74,7 +78,7 @@ impl Application {
             .unwrap();
 
         Self {
-            socket_address: SocketAddr::from((Ipv4Addr::new(127, 0, 0, 1), 8080)),
+            socket_address: SocketAddr::from((Ipv4Addr::new(127, 0, 0, 1), port)),
             database,
         }
     }

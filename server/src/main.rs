@@ -4,6 +4,9 @@ mod helper;
 mod router;
 mod service;
 
+#[cfg(test)]
+mod test;
+
 fn enable_tracing() {
     use tracing_subscriber::prelude::*;
     use tracing_subscriber::EnvFilter;

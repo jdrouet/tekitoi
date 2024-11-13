@@ -17,6 +17,14 @@ impl Error {
             message: message.into(),
         }
     }
+
+    pub fn bad_request(message: impl Into<Cow<'static, str>>) -> Self {
+        Self::new(StatusCode::BAD_REQUEST, message)
+    }
+
+    pub fn internal() -> Self {
+        Self::new(StatusCode::INTERNAL_SERVER_ERROR, "something went wrong")
+    }
 }
 
 impl IntoResponse for Error {

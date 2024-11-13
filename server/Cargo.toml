@@ -8,6 +8,7 @@ another-html-builder = { version = "0.1" }
 anyhow = { version = "1.0" }
 axum = { version = "0.7", features = ["macros"] }
 axum-extra = { version = "0.9", features = ["cookie", "typed-header"] }
+base64 = "0.22.1"
 chrono = { version = "0.4", default-features = false, features = ["now"] }
 rand = { version = "0.8", default-features = false, features = [
     "std",
@@ -16,6 +17,7 @@ rand = { version = "0.8", default-features = false, features = [
 serde = { version = "1.0", features = ["derive"] }
 serde_json = { version = "1.0", features = ["preserve_order"] }
 serde_urlencoded = { version = "0.7" }
+sha2 = "0.10.8"
 sqlx = { version = "0.8", features = [
     "chrono",
     "runtime-tokio",
@@ -33,4 +35,6 @@ uuid = { version = "1.11", features = ["serde", "v4"] }
 
 [dev-dependencies]
 http-body-util = "0.1.2"
+oauth2 = "4.4.2"
+reqwest = { version = "0.12.9", default-features = false, features = ["json"] }
 tower = "0.5.1"

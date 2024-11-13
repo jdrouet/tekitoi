@@ -12,6 +12,8 @@ use crate::helper::parse_env_or;
 #[cfg(test)]
 pub(crate) const CLIENT_ID: Uuid = Uuid::from_u128(0x00010000000000000000000000000000u128);
 #[cfg(test)]
+pub(crate) const CLIENT_SECRET: &str = "secret";
+#[cfg(test)]
 pub(crate) const REDIRECT_URI: &str = "http://service/redirect";
 #[cfg(test)]
 pub(crate) const ALICE_ID: Uuid = Uuid::from_u128(0x00000000000000000000000000000000u128);
@@ -87,7 +89,7 @@ impl RootConfig {
             applications: vec![ApplicationConfig {
                 client_id: CLIENT_ID,
                 redirect_uri: REDIRECT_URI.into(),
-                client_secrets: HashSet::from_iter([String::from("secret")]),
+                client_secrets: HashSet::from_iter([CLIENT_SECRET.into()]),
                 users: vec![
                     UserEntity {
                         id: ALICE_ID,

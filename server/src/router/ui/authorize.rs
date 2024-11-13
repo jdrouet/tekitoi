@@ -11,7 +11,10 @@ use axum::{
 use uuid::Uuid;
 
 use crate::{
-    entity::user::Entity as UserEntity,
+    entity::{
+        code_challenge::CodeChallengeMethod, response_type::ResponseType,
+        user::Entity as UserEntity,
+    },
     helper::generate_token,
     router::ui::helper::{encode_url, redirection},
 };
@@ -155,10 +158,14 @@ impl<'a> ResponseSuccess<'a> {
 }
 
 #[derive(serde::Deserialize, serde::Serialize)]
+#[cfg_attr(test, derive(Debug))]
 pub(crate) struct QueryParams {
     client_id: Uuid,
     redirect_uri: String,
     state: String,
+    code_challenge: String,
+    code_challenge_method: CodeChallengeMethod, // S256
+    response_type: ResponseType,                // code
     #[serde(skip_serializing_if = "Option::is_none")]
     scope: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -170,15 +177,6 @@ impl QueryParams {
         let params = serde_urlencoded::to_string(self).context("url encoding params")?;
         Ok(format!("/authorize?{params}"))
     }
-}
-
-#[derive(serde::Deserialize, serde::Serialize)]
-pub(crate) struct AuthorizationState {
-    pub state: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub scope: Option<String>,
-    pub client_id: Uuid,
-    pub user: Uuid,
 }
 
 pub(super) async fn handle(
@@ -205,6 +203,9 @@ pub(super) async fn handle(
                 code: code.as_str(),
                 state: params.state.as_str(),
                 scope: params.scope.as_deref(),
+                code_challenge: params.code_challenge.as_str(),
+                code_challenge_method: params.code_challenge_method, // S256
+                response_type: params.response_type,                 // code
                 client_id: params.client_id,
                 user_id: user.id,
                 time_to_live: AUTHORIZATION_TTL,

@@ -92,6 +92,7 @@ where
 pub enum ResponseError {
     CodeNotFound,
     ApplicationNotFound,
+    InvalidCodeVerifier,
     InvalidRedirectUri,
     Database,
 }
@@ -105,12 +106,21 @@ impl From<sqlx::Error> for ResponseError {
 
 impl IntoResponse for ResponseError {
     fn into_response(self) -> axum::response::Response {
-        StatusCode::NOT_IMPLEMENTED.into_response()
+        match self {
+            Self::CodeNotFound => super::error::Error::bad_request("provided code doesn't exist"),
+            Self::ApplicationNotFound => {
+                super::error::Error::bad_request("provided client_id doesn't exist")
+            }
+            Self::InvalidRedirectUri => super::error::Error::bad_request("invalid redirect uri"),
+            Self::InvalidCodeVerifier => super::error::Error::bad_request("invalid code verifier"),
+            Self::Database => super::error::Error::internal(),
+        }
+        .into_response()
     }
 }
 
 #[derive(serde::Deserialize)]
-#[cfg_attr(test, derive(serde::Serialize))]
+#[cfg_attr(test, derive(Debug, serde::Serialize))]
 pub(crate) struct RequestPayload {
     code: String,
     #[allow(dead_code)]
@@ -199,6 +209,13 @@ pub(super) async fn handle(
         .await?
         .ok_or(ResponseError::CodeNotFound)?;
 
+    let hashed_verifier = state
+        .code_challenge_method
+        .hash(payload.code_verifier.as_str());
+    if !hashed_verifier.eq(state.code_challenge.as_str()) {
+        return Err(ResponseError::InvalidCodeVerifier);
+    }
+
     let app = crate::entity::application::FindById::new(state.client_id)
         .execute(&mut *tx)
         .await?;
@@ -236,7 +253,10 @@ mod integration_tests {
     };
     use http_body_util::BodyExt; // for `collect`
 
-    use crate::service::dataset::{ALICE_ID, CLIENT_ID, REDIRECT_URI};
+    use crate::{
+        entity::{code_challenge::CodeChallengeMethod, response_type::ResponseType},
+        service::dataset::{ALICE_ID, CLIENT_ID, REDIRECT_URI},
+    };
 
     const SHORT_TTL: Duration = Duration::new(5, 0);
 
@@ -247,10 +267,13 @@ mod integration_tests {
         let app = crate::app::Application::test().await;
         crate::entity::authorization::Create {
             code: "aaaaaaaaaaaaaaaaaaa",
-            state: "state",
-            scope: None,
             client_id: CLIENT_ID,
             user_id: ALICE_ID,
+            state: "state",
+            scope: None,
+            code_challenge: "code-challenge",
+            code_challenge_method: CodeChallengeMethod::S256,
+            response_type: ResponseType::Code,
             time_to_live: SHORT_TTL,
         }
         .execute(app.database())
@@ -292,10 +315,13 @@ mod integration_tests {
         let app = crate::app::Application::test().await;
         crate::entity::authorization::Create {
             code: "aaaaaaaaaaaaaaaaaaa",
-            state: "state",
-            scope: None,
             client_id: CLIENT_ID,
             user_id: ALICE_ID,
+            state: "state",
+            scope: None,
+            code_challenge: "code-challenge",
+            code_challenge_method: CodeChallengeMethod::S256,
+            response_type: ResponseType::Code,
             time_to_live: SHORT_TTL,
         }
         .execute(app.database())
@@ -339,10 +365,13 @@ mod integration_tests {
 
         crate::entity::authorization::Create {
             code: "aaaaaaaaaaaaaaaaaaa",
-            state: "state",
-            scope: None,
             client_id: CLIENT_ID,
             user_id: ALICE_ID,
+            state: "state",
+            scope: None,
+            code_challenge: "code-challenge",
+            code_challenge_method: CodeChallengeMethod::S256,
+            response_type: ResponseType::Code,
             time_to_live: SHORT_TTL,
         }
         .execute(app.database())
