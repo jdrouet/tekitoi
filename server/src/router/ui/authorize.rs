@@ -22,7 +22,7 @@ use crate::{
 // 10 mins
 const AUTHORIZATION_TTL: Duration = Duration::new(600, 0);
 
-fn render_head<'b>(buf: Buffer<String, Body<'b>>) -> Buffer<String, Body<'b>> {
+fn render_head(buf: Buffer<String, Body<'_>>) -> Buffer<String, Body<'_>> {
     buf.node("head").content(|buf| {
         buf.node("meta")
             .attr(("charset", "utf-8"))
