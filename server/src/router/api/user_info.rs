@@ -56,7 +56,7 @@ mod integration_tests {
         http::{Request, StatusCode},
     };
 
-    use crate::service::dataset::{ALICE_ID, APP_ID};
+    use crate::service::dataset::{ALICE_ID, CLIENT_ID};
 
     const LOCAL_TTL: Duration = Duration::new(10, 0);
 
@@ -66,7 +66,7 @@ mod integration_tests {
         let app = crate::app::Application::test().await;
         crate::entity::session::Create {
             access_token: "aaaaaaaaaaaaaaaaaaa",
-            client_id: APP_ID,
+            client_id: CLIENT_ID,
             user_id: ALICE_ID,
             scope: None,
             time_to_live: LOCAL_TTL,

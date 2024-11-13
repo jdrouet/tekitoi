@@ -236,7 +236,7 @@ mod integration_tests {
     };
     use http_body_util::BodyExt; // for `collect`
 
-    use crate::service::dataset::{ALICE_ID, APP_ID, REDIRECT_URI};
+    use crate::service::dataset::{ALICE_ID, CLIENT_ID, REDIRECT_URI};
 
     const SHORT_TTL: Duration = Duration::new(5, 0);
 
@@ -249,7 +249,7 @@ mod integration_tests {
             code: "aaaaaaaaaaaaaaaaaaa",
             state: "state",
             scope: None,
-            client_id: APP_ID,
+            client_id: CLIENT_ID,
             user_id: ALICE_ID,
             time_to_live: SHORT_TTL,
         }
@@ -294,7 +294,7 @@ mod integration_tests {
             code: "aaaaaaaaaaaaaaaaaaa",
             state: "state",
             scope: None,
-            client_id: APP_ID,
+            client_id: CLIENT_ID,
             user_id: ALICE_ID,
             time_to_live: SHORT_TTL,
         }
@@ -341,7 +341,7 @@ mod integration_tests {
             code: "aaaaaaaaaaaaaaaaaaa",
             state: "state",
             scope: None,
-            client_id: APP_ID,
+            client_id: CLIENT_ID,
             user_id: ALICE_ID,
             time_to_live: SHORT_TTL,
         }

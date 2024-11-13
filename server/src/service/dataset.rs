@@ -10,36 +10,13 @@ use crate::entity::user::Entity as UserEntity;
 use crate::helper::parse_env_or;
 
 #[cfg(test)]
-pub(crate) const APP_ID: Uuid = Uuid::from_u128(0x00010000000000000000000000000000u128);
+pub(crate) const CLIENT_ID: Uuid = Uuid::from_u128(0x00010000000000000000000000000000u128);
 #[cfg(test)]
 pub(crate) const REDIRECT_URI: &str = "http://service/redirect";
 #[cfg(test)]
 pub(crate) const ALICE_ID: Uuid = Uuid::from_u128(0x00000000000000000000000000000000u128);
 #[cfg(test)]
 pub(crate) const BOB_ID: Uuid = Uuid::from_u128(0x00000000000000000000000000000001u128);
-
-#[derive(serde::Deserialize)]
-pub(crate) struct RootConfig {
-    applications: Vec<ApplicationConfig>,
-}
-
-#[derive(serde::Deserialize)]
-struct ApplicationConfig {
-    client_id: Uuid,
-    redirect_uri: String,
-    client_secrets: HashSet<String>,
-    users: Vec<UserEntity>,
-}
-
-impl RootConfig {
-    fn from_path<P: AsRef<Path>>(path: P) -> anyhow::Result<Self> {
-        let file = std::fs::OpenOptions::new()
-            .read(true)
-            .open(path)
-            .context("opening configuration file")?;
-        serde_json::from_reader(file).context("reading configuration file")
-    }
-}
 
 pub(crate) struct Config {
     path: PathBuf,
@@ -61,28 +38,18 @@ impl Config {
     }
 }
 
-#[cfg(test)]
+#[derive(serde::Deserialize)]
+pub(crate) struct RootConfig {
+    applications: Vec<ApplicationConfig>,
+}
+
 impl RootConfig {
-    pub(crate) fn test() -> Self {
-        RootConfig {
-            applications: vec![ApplicationConfig {
-                client_id: APP_ID,
-                redirect_uri: REDIRECT_URI.into(),
-                client_secrets: HashSet::from_iter([String::from("secret")]),
-                users: vec![
-                    UserEntity {
-                        id: ALICE_ID,
-                        login: "alice".into(),
-                        email: "alice@gmail.com".into(),
-                    },
-                    UserEntity {
-                        id: BOB_ID,
-                        login: "bob".into(),
-                        email: "bob@gmail.com".into(),
-                    },
-                ],
-            }],
-        }
+    fn from_path<P: AsRef<Path>>(path: P) -> anyhow::Result<Self> {
+        let file = std::fs::OpenOptions::new()
+            .read(true)
+            .open(path)
+            .context("opening configuration file")?;
+        serde_json::from_reader(file).context("reading configuration file")
     }
 }
 
@@ -111,4 +78,37 @@ impl RootConfig {
         tx.commit().await?;
         Ok(())
     }
+}
+
+#[cfg(test)]
+impl RootConfig {
+    pub(crate) fn test() -> Self {
+        RootConfig {
+            applications: vec![ApplicationConfig {
+                client_id: CLIENT_ID,
+                redirect_uri: REDIRECT_URI.into(),
+                client_secrets: HashSet::from_iter([String::from("secret")]),
+                users: vec![
+                    UserEntity {
+                        id: ALICE_ID,
+                        login: "alice".into(),
+                        email: "alice@gmail.com".into(),
+                    },
+                    UserEntity {
+                        id: BOB_ID,
+                        login: "bob".into(),
+                        email: "bob@gmail.com".into(),
+                    },
+                ],
+            }],
+        }
+    }
+}
+
+#[derive(serde::Deserialize)]
+struct ApplicationConfig {
+    client_id: Uuid,
+    redirect_uri: String,
+    client_secrets: HashSet<String>,
+    users: Vec<UserEntity>,
 }
