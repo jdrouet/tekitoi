@@ -179,6 +179,7 @@ pub(crate) struct ResponsePayload {
     #[serde(skip_serializing_if = "Option::is_none")]
     scope: Option<String>,
     token_type: TokenType,
+    expires_in: u64,
 }
 
 impl IntoResponse for ResponsePayload {
@@ -213,6 +214,7 @@ pub(super) async fn handle(
         .code_challenge_method
         .hash(payload.code_verifier.as_str());
     if !hashed_verifier.eq(state.code_challenge.as_str()) {
+        tracing::warn!(message = "invalid code verifier", expected = %state.code_challenge, hash = %hashed_verifier);
         return Err(ResponseError::InvalidCodeVerifier);
     }
 
@@ -240,6 +242,7 @@ pub(super) async fn handle(
         access_token,
         scope: state.scope,
         token_type: TokenType::Bearer,
+        expires_in: ACCESS_TOKEN_TTL.as_secs(),
     })
 }
 
@@ -271,7 +274,7 @@ mod integration_tests {
             user_id: ALICE_ID,
             state: "state",
             scope: None,
-            code_challenge: "code-challenge",
+            code_challenge: "Cuib-0-lo1-9KOlQ5wI4iPoPxUqwtHV3by9YggLlyKE",
             code_challenge_method: CodeChallengeMethod::S256,
             response_type: ResponseType::Code,
             time_to_live: SHORT_TTL,
@@ -287,7 +290,7 @@ mod integration_tests {
             .body(Body::from(
                 serde_json::to_vec(&super::RequestPayload {
                     code: "aaaaaaaaaaaaaaaaaaa".into(),
-                    code_verifier: "whatever".into(),
+                    code_verifier: "code-challenge".into(),
                     grant_type: "".into(),
                     redirect_uri: REDIRECT_URI.into(),
                 })
@@ -295,7 +298,8 @@ mod integration_tests {
             ))
             .unwrap();
         let res = app.handle(req).await;
-        assert_eq!(res.status(), StatusCode::OK);
+        let status = res.status();
+        assert_eq!(status, StatusCode::OK);
 
         let ctype = res
             .headers()
@@ -320,7 +324,7 @@ mod integration_tests {
             state: "state",
             scope: None,
             code_challenge: "code-challenge",
-            code_challenge_method: CodeChallengeMethod::S256,
+            code_challenge_method: CodeChallengeMethod::Plain,
             response_type: ResponseType::Code,
             time_to_live: SHORT_TTL,
         }
@@ -336,7 +340,7 @@ mod integration_tests {
             .body(Body::from(
                 serde_json::to_vec(&super::RequestPayload {
                     code: "aaaaaaaaaaaaaaaaaaa".into(),
-                    code_verifier: "whatever".into(),
+                    code_verifier: "code-challenge".into(),
                     grant_type: "".into(),
                     redirect_uri: REDIRECT_URI.into(),
                 })
@@ -369,7 +373,7 @@ mod integration_tests {
             user_id: ALICE_ID,
             state: "state",
             scope: None,
-            code_challenge: "code-challenge",
+            code_challenge: "Cuib-0-lo1-9KOlQ5wI4iPoPxUqwtHV3by9YggLlyKE",
             code_challenge_method: CodeChallengeMethod::S256,
             response_type: ResponseType::Code,
             time_to_live: SHORT_TTL,
@@ -386,7 +390,7 @@ mod integration_tests {
             .body(Body::from(
                 serde_json::to_vec(&super::RequestPayload {
                     code: "aaaaaaaaaaaaaaaaaaa".into(),
-                    code_verifier: "whatever".into(),
+                    code_verifier: "code-challenge".into(),
                     grant_type: "".into(),
                     redirect_uri: REDIRECT_URI.into(),
                 })

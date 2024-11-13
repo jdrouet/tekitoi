@@ -56,7 +56,7 @@ async fn should_authenticate() {
         .await
         .unwrap();
 
-    let user: serde_json::Value = reqwest::Client::new()
+    let _user: serde_json::Value = reqwest::Client::new()
         .get(format!("http://localhost:{port}/api/user-info"))
         .header(
             "Authorization",
@@ -69,6 +69,4 @@ async fn should_authenticate() {
         .json()
         .await
         .unwrap();
-
-    assert!(false, "{user:?}");
 }

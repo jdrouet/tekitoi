@@ -8,6 +8,7 @@ pub struct Entity {
     pub client_id: Uuid,
     pub user_id: Uuid,
     pub scope: Option<String>,
+    pub valid_until: chrono::DateTime<chrono::Utc>,
 }
 
 impl<'r> sqlx::FromRow<'r, sqlx::sqlite::SqliteRow> for Entity {
@@ -19,6 +20,7 @@ impl<'r> sqlx::FromRow<'r, sqlx::sqlite::SqliteRow> for Entity {
             client_id: row.try_get(1)?,
             user_id: row.try_get(2)?,
             scope: row.try_get(3)?,
+            valid_until: row.try_get(4)?,
         })
     }
 }
@@ -41,7 +43,7 @@ impl Create<'_> {
         sqlx::query_as(
             r#"insert into sessions (access_token, client_id, user_id, scope, created_at, valid_until)
 values ($1, $2, $3, $4, $5, $6)
-returning access_token, client_id, user_id, scope"#,
+returning access_token, client_id, user_id, scope, valid_until"#,
         )
         .bind(self.access_token)
         .bind(self.client_id)
