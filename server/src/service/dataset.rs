@@ -7,7 +7,6 @@ use anyhow::Context;
 use uuid::Uuid;
 
 use crate::entity::user::Entity as UserEntity;
-use crate::helper::parse_env_or;
 
 #[cfg(test)]
 pub(crate) const CLIENT_ID: Uuid = Uuid::from_u128(0x00010000000000000000000000000000u128);
@@ -21,13 +20,13 @@ pub(crate) const ALICE_ID: Uuid = Uuid::from_u128(0x0000000000000000000000000000
 pub(crate) const BOB_ID: Uuid = Uuid::from_u128(0x00000000000000000000000000000001u128);
 
 pub(crate) struct Config {
-    path: PathBuf,
+    path: Option<PathBuf>,
 }
 
 impl Config {
     pub(crate) fn from_env() -> anyhow::Result<Self> {
         Ok(Self {
-            path: parse_env_or("CONFIG_PATH", PathBuf::from("./config.json"))?,
+            path: std::env::var("CONFIG_PATH").ok().map(PathBuf::from),
         })
     }
 
@@ -35,8 +34,14 @@ impl Config {
         &self,
         database: &crate::service::database::Pool,
     ) -> anyhow::Result<()> {
-        let root = RootConfig::from_path(&self.path)?;
-        root.synchronize(database).await
+        if let Some(ref path) = self.path {
+            tracing::debug!("synchronizing with provided configuration");
+            let root = RootConfig::from_path(path)?;
+            root.synchronize(database).await
+        } else {
+            tracing::debug!("no configuration path provided, skipping...");
+            Ok(())
+        }
     }
 }
 
