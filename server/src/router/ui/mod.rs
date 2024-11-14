@@ -1,6 +1,7 @@
 use axum::routing::get;
 
 pub(super) mod authorize;
+mod error;
 mod helper;
 mod login;
 

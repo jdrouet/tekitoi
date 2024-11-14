@@ -8,7 +8,8 @@ use uuid::Uuid;
 
 use crate::entity::provider::ProviderKind;
 use crate::helper::generate_token;
-use crate::router::ui::authorize::{render_head, AUTHORIZATION_TTL};
+use crate::router::ui::authorize::AUTHORIZATION_TTL;
+use crate::router::ui::error::Error;
 use crate::router::ui::helper::{encode_url, redirection};
 
 pub(crate) enum ResponseError {
@@ -42,34 +43,11 @@ impl ResponseError {
             Self::Database => "Something went wrong...",
         }
     }
-
-    fn render(&self) -> String {
-        another_html_builder::Buffer::default()
-            .doctype()
-            .node("html")
-            .attr(("lang", "en"))
-            .content(|buf| {
-                let buf = render_head(buf);
-                buf.node("body").content(|buf| {
-                    buf.node("div")
-                        .attr(("class", "card shadow"))
-                        .content(|buf| {
-                            buf.node("div")
-                                .attr(("class", "card-header text-center"))
-                                .content(|buf| buf.text("Error"))
-                                .node("div")
-                                .attr(("class", "card-body"))
-                                .content(|buf| buf.text(self.message()))
-                        })
-                })
-            })
-            .into_inner()
-    }
 }
 
 impl IntoResponse for ResponseError {
     fn into_response(self) -> axum::response::Response {
-        (self.status(), Html(self.render())).into_response()
+        Error::new(self.status(), self.message()).into_response()
     }
 }
 
