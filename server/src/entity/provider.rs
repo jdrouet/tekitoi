@@ -1,0 +1,118 @@
+use std::str::FromStr;
+
+use uuid::Uuid;
+
+pub(crate) const USER_LIST_NAME: &str = "user-list";
+pub(crate) const USER_LIST_CODE: u8 = 0;
+
+#[derive(
+    Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize, serde::Deserialize,
+)]
+#[serde(rename_all = "kebab-case")]
+pub(crate) enum ProviderKind {
+    UserList,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct ProviderKindParserError(pub String);
+
+impl std::error::Error for ProviderKindParserError {}
+
+impl std::fmt::Display for ProviderKindParserError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "invalid provider kind {:?}", self.0)
+    }
+}
+
+impl FromStr for ProviderKind {
+    type Err = ProviderKindParserError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            USER_LIST_NAME => Ok(Self::UserList),
+            other => Err(ProviderKindParserError(other.to_string())),
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct ProviderKindDecoderError(pub u8);
+
+impl std::error::Error for ProviderKindDecoderError {}
+
+impl std::fmt::Display for ProviderKindDecoderError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "invalid provider kind {:?}", self.0)
+    }
+}
+
+impl TryFrom<u8> for ProviderKind {
+    type Error = ProviderKindDecoderError;
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        match value {
+            USER_LIST_CODE => Ok(Self::UserList),
+            other => Err(ProviderKindDecoderError(other)),
+        }
+    }
+}
+
+impl ProviderKind {
+    pub const fn as_code(&self) -> u8 {
+        USER_LIST_CODE
+    }
+}
+
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
+pub(crate) struct Entity {
+    application_id: Uuid,
+    kind: ProviderKind,
+}
+
+impl<'r> sqlx::FromRow<'r, sqlx::sqlite::SqliteRow> for Entity {
+    fn from_row(row: &'r sqlx::sqlite::SqliteRow) -> Result<Self, sqlx::Error> {
+        use sqlx::Row;
+
+        let kind: u8 = row.try_get(1)?;
+        let kind = ProviderKind::try_from(kind).map_err(|err| sqlx::Error::ColumnDecode {
+            index: "kind".into(),
+            source: Box::new(err),
+        })?;
+
+        Ok(Self {
+            application_id: row.try_get(0)?,
+            kind,
+        })
+    }
+}
+
+pub(crate) struct Upsert {
+    application_id: Uuid,
+    kind: ProviderKind,
+}
+
+impl Upsert {
+    pub fn new(application_id: Uuid, kind: ProviderKind) -> Self {
+        Self {
+            application_id,
+            kind,
+        }
+    }
+
+    pub async fn execute<'c, E: sqlx::Executor<'c, Database = sqlx::Sqlite>>(
+        &self,
+        executor: E,
+    ) -> Result<Entity, sqlx::Error> {
+        sqlx::query_as(
+            r#"insert into providers (application_id, kind)
+    values ($1, $2)
+    on conflict (application_id, kind)
+    do update set kind = excluded.kind
+    returning application_id, kind"#,
+        )
+        .bind(self.application_id)
+        .bind(self.kind.as_code())
+        .fetch_one(executor)
+        .await
+    }
+}

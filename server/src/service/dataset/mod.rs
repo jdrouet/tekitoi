@@ -6,7 +6,7 @@ use std::{
 use anyhow::Context;
 use uuid::Uuid;
 
-use crate::entity::user::Entity as UserEntity;
+mod userlist;
 
 #[cfg(test)]
 pub(crate) const CLIENT_ID: Uuid = Uuid::from_u128(0x00010000000000000000000000000000u128);
@@ -68,7 +68,7 @@ impl RootConfig {
         tracing::debug!("executing synchro");
         let mut tx = database.as_ref().begin().await?;
         for app in self.applications.iter() {
-            crate::entity::application::Upsert::new(
+            let created = crate::entity::application::Upsert::new(
                 app.client_id,
                 &app.client_secrets,
                 &app.redirect_uri,
@@ -76,10 +76,8 @@ impl RootConfig {
             .execute(&mut *tx)
             .await?;
 
-            for user in app.users.iter() {
-                crate::entity::user::Upsert::new(user.id, app.client_id, &user.login, &user.email)
-                    .execute(&mut *tx)
-                    .await?;
+            for provider in app.providers.iter() {
+                tx = provider.synchronize(tx, &created).await?;
             }
         }
         tx.commit().await?;
@@ -95,18 +93,7 @@ impl RootConfig {
                 client_id: CLIENT_ID,
                 redirect_uri: REDIRECT_URI.into(),
                 client_secrets: HashSet::from_iter([CLIENT_SECRET.into()]),
-                users: vec![
-                    UserEntity {
-                        id: ALICE_ID,
-                        login: "alice".into(),
-                        email: "alice@example.com".into(),
-                    },
-                    UserEntity {
-                        id: BOB_ID,
-                        login: "bob".into(),
-                        email: "bob@example.com".into(),
-                    },
-                ],
+                providers: vec![Provider::UserList(userlist::Config::test())],
             }],
         }
     }
@@ -117,5 +104,23 @@ struct ApplicationConfig {
     client_id: Uuid,
     redirect_uri: String,
     client_secrets: HashSet<String>,
-    users: Vec<UserEntity>,
+    providers: Vec<Provider>,
+}
+
+#[derive(serde::Deserialize)]
+#[serde(tag = "type")]
+enum Provider {
+    UserList(userlist::Config),
+}
+
+impl Provider {
+    pub(super) async fn synchronize<'c>(
+        &self,
+        tx: sqlx::Transaction<'c, sqlx::Sqlite>,
+        app: &crate::entity::application::Entity,
+    ) -> anyhow::Result<sqlx::Transaction<'c, sqlx::Sqlite>> {
+        match self {
+            Self::UserList(inner) => inner.synchronize(tx, app).await,
+        }
+    }
 }

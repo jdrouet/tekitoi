@@ -2,6 +2,9 @@ use std::{borrow::Cow, str::FromStr};
 
 use sha2::Digest;
 
+pub(crate) const PLAIN_CODE: u8 = 0;
+pub(crate) const S256_CODE: u8 = 1;
+
 #[derive(
     Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize, serde::Deserialize,
 )]
@@ -35,11 +38,34 @@ impl FromStr for CodeChallengeMethod {
     }
 }
 
+#[derive(Clone, Debug)]
+pub(crate) struct CodeChallengeMethodDecodeError(pub u8);
+
+impl std::error::Error for CodeChallengeMethodDecodeError {}
+
+impl std::fmt::Display for CodeChallengeMethodDecodeError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "invalid code challenge method {}", self.0)
+    }
+}
+
+impl TryFrom<u8> for CodeChallengeMethod {
+    type Error = CodeChallengeMethodDecodeError;
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        match value {
+            PLAIN_CODE => Ok(Self::Plain),
+            S256_CODE => Ok(Self::S256),
+            other => Err(CodeChallengeMethodDecodeError(other)),
+        }
+    }
+}
+
 impl CodeChallengeMethod {
-    pub fn as_str(&self) -> &'static str {
+    pub const fn as_code(&self) -> u8 {
         match self {
-            Self::Plain => "plain",
-            Self::S256 => "S256",
+            Self::Plain => PLAIN_CODE,
+            Self::S256 => S256_CODE,
         }
     }
 

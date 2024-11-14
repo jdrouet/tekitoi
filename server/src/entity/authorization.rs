@@ -1,4 +1,4 @@
-use std::{str::FromStr, time::Duration};
+use std::time::Duration;
 
 use uuid::Uuid;
 
@@ -20,20 +20,21 @@ impl<'r> sqlx::FromRow<'r, sqlx::sqlite::SqliteRow> for Entity {
     fn from_row(row: &'r sqlx::sqlite::SqliteRow) -> Result<Self, sqlx::Error> {
         use sqlx::Row;
 
-        let code_challenge_method: String = row.try_get(6)?;
-        let code_challenge_method = CodeChallengeMethod::from_str(code_challenge_method.as_str())
-            .map_err(|err| sqlx::Error::ColumnDecode {
-            index: "code_challenge_method".into(),
-            source: Box::new(err),
-        })?;
+        let code_challenge_method: u8 = row.try_get(6)?;
+        let code_challenge_method =
+            CodeChallengeMethod::try_from(code_challenge_method).map_err(|err| {
+                sqlx::Error::ColumnDecode {
+                    index: "code_challenge_method".into(),
+                    source: Box::new(err),
+                }
+            })?;
 
-        let response_type: String = row.try_get(7)?;
-        let response_type = ResponseType::from_str(response_type.as_str()).map_err(|err| {
-            sqlx::Error::ColumnDecode {
+        let response_type: u8 = row.try_get(7)?;
+        let response_type =
+            ResponseType::try_from(response_type).map_err(|err| sqlx::Error::ColumnDecode {
                 index: "response_type".into(),
                 source: Box::new(err),
-            }
-        })?;
+            })?;
 
         Ok(Self {
             code: row.try_get(0)?,
@@ -78,8 +79,8 @@ returning code, client_id, user_id, state, scope, code_challenge, code_challenge
         .bind(self.state)
         .bind(self.scope)
         .bind(self.code_challenge)
-        .bind(self.code_challenge_method.as_str())
-        .bind(self.response_type.as_str())
+        .bind(self.code_challenge_method.as_code())
+        .bind(self.response_type.as_code())
         .bind(now)
         .bind(until)
         .fetch_one(executor)
