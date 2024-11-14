@@ -1,21 +1,15 @@
 use std::borrow::Cow;
 
-use axum::{
-    extract::Query,
-    http::StatusCode,
-    response::{Html, IntoResponse},
-    Extension,
-};
+use axum::extract::Query;
+use axum::http::StatusCode;
+use axum::response::{Html, IntoResponse};
+use axum::Extension;
 use uuid::Uuid;
 
-use crate::{
-    entity::provider::ProviderKind,
-    helper::generate_token,
-    router::ui::{
-        authorize::{render_head, AUTHORIZATION_TTL},
-        helper::{encode_url, redirection},
-    },
-};
+use crate::entity::provider::ProviderKind;
+use crate::helper::generate_token;
+use crate::router::ui::authorize::{render_head, AUTHORIZATION_TTL};
+use crate::router::ui::helper::{encode_url, redirection};
 
 pub(crate) enum ResponseError {
     ApplicationNotFound,

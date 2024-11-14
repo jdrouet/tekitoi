@@ -1,4 +1,6 @@
-use std::{borrow::Cow, collections::HashMap, fmt::Display};
+use std::borrow::Cow;
+use std::collections::HashMap;
+use std::fmt::Display;
 
 pub(super) fn redirection<T: Display>(target: T) -> String {
     let content = format!("1; url='{target}'");

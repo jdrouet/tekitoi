@@ -1,18 +1,18 @@
-use std::{borrow::Cow, collections::HashSet, time::Duration};
+use std::borrow::Cow;
+use std::collections::HashSet;
+use std::time::Duration;
 
 use another_html_builder::{Body, Buffer};
-use axum::{
-    extract::Query,
-    http::StatusCode,
-    response::{Html, IntoResponse},
-    Extension,
-};
+use axum::extract::Query;
+use axum::http::StatusCode;
+use axum::response::{Html, IntoResponse};
+use axum::Extension;
 use uuid::Uuid;
 
-use crate::entity::{
-    code_challenge::CodeChallengeMethod, provider::ProviderKind, response_type::ResponseType,
-    user::Entity as UserEntity,
-};
+use crate::entity::code_challenge::CodeChallengeMethod;
+use crate::entity::provider::ProviderKind;
+use crate::entity::response_type::ResponseType;
+use crate::entity::user::Entity as UserEntity;
 
 // 10 mins
 pub(super) const AUTHORIZATION_TTL: Duration = Duration::new(600, 0);

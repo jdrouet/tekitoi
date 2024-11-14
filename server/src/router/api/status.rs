@@ -1,4 +1,5 @@
-use axum::{http::StatusCode, Extension};
+use axum::http::StatusCode;
+use axum::Extension;
 
 pub(crate) async fn handle(
     Extension(database): Extension<crate::service::database::Pool>,

@@ -2,7 +2,8 @@ use std::time::Duration;
 
 use uuid::Uuid;
 
-use super::{code_challenge::CodeChallengeMethod, response_type::ResponseType};
+use super::code_challenge::CodeChallengeMethod;
+use super::response_type::ResponseType;
 
 #[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
 pub struct Entity {

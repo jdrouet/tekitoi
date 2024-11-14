@@ -1,8 +1,6 @@
-use axum::{
-    http::header::{CACHE_CONTROL, CONTENT_TYPE},
-    response::{AppendHeaders, IntoResponse},
-    routing::get,
-};
+use axum::http::header::{CACHE_CONTROL, CONTENT_TYPE};
+use axum::response::{AppendHeaders, IntoResponse};
+use axum::routing::get;
 
 pub(crate) const STYLE_PATH: &str = concat!("/assets/style-", env!("CARGO_PKG_VERSION"), ".css");
 

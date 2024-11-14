@@ -1,6 +1,8 @@
-use std::{borrow::Cow, collections::HashMap};
+use std::borrow::Cow;
+use std::collections::HashMap;
 
-use oauth2::{reqwest::async_http_client, AuthorizationCode, TokenResponse};
+use oauth2::reqwest::async_http_client;
+use oauth2::{AuthorizationCode, TokenResponse};
 use reqwest::Url;
 
 use crate::service::dataset::{CLIENT_ID, CLIENT_SECRET, REDIRECT_URI};

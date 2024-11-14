@@ -51,10 +51,8 @@ pub(super) async fn handle(
 mod integration_tests {
     use std::time::Duration;
 
-    use axum::{
-        body::Body,
-        http::{Request, StatusCode},
-    };
+    use axum::body::Body;
+    use axum::http::{Request, StatusCode};
 
     use crate::service::dataset::{ALICE_ID, CLIENT_ID};
 

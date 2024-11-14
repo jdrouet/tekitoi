@@ -250,16 +250,13 @@ pub(super) async fn handle(
 mod integration_tests {
     use std::time::Duration;
 
-    use axum::{
-        body::Body,
-        http::{Request, StatusCode},
-    };
+    use axum::body::Body;
+    use axum::http::{Request, StatusCode};
     use http_body_util::BodyExt; // for `collect`
 
-    use crate::{
-        entity::{code_challenge::CodeChallengeMethod, response_type::ResponseType},
-        service::dataset::{ALICE_ID, CLIENT_ID, REDIRECT_URI},
-    };
+    use crate::entity::code_challenge::CodeChallengeMethod;
+    use crate::entity::response_type::ResponseType;
+    use crate::service::dataset::{ALICE_ID, CLIENT_ID, REDIRECT_URI};
 
     const SHORT_TTL: Duration = Duration::new(5, 0);
 

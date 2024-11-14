@@ -1,7 +1,9 @@
-use axum::Extension;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+
+use axum::Extension;
 use tokio::net::TcpListener;
-use tower_http::{compression::CompressionLayer, trace::TraceLayer};
+use tower_http::compression::CompressionLayer;
+use tower_http::trace::TraceLayer;
 
 use crate::helper::parse_env_or;
 
