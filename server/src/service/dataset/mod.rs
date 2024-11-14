@@ -108,7 +108,7 @@ struct ApplicationConfig {
 }
 
 #[derive(serde::Deserialize)]
-#[serde(tag = "type")]
+#[serde(tag = "type", rename_all = "kebab-case")]
 enum Provider {
     UserList(userlist::Config),
 }

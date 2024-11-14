@@ -3,7 +3,13 @@ use std::{borrow::Cow, collections::HashMap};
 use oauth2::{reqwest::async_http_client, AuthorizationCode, TokenResponse};
 use reqwest::Url;
 
-use crate::service::dataset::{ALICE_ID, CLIENT_ID, CLIENT_SECRET, REDIRECT_URI};
+use crate::service::dataset::{CLIENT_ID, CLIENT_SECRET, REDIRECT_URI};
+
+fn get_login_url(page: &str) -> Option<&str> {
+    let index = page.find("/authorize/user-list/login")?;
+    let len = page[index..].find("\"")?;
+    Some(&page[index..(index + len)])
+}
 
 fn get_redirection_url(page: &str) -> Option<Url> {
     let index = page.find("1; url='").map(|v| v + 8)?;
@@ -30,16 +36,19 @@ async fn should_authenticate() {
     let (pkce_challenge, pkce_verifier) = oauth2::PkceCodeChallenge::new_random_sha256();
 
     // Generate the full authorization URL.
-    let (mut auth_url, _csrf_token) = client
+    let (auth_url, _csrf_token) = client
         .authorize_url(oauth2::CsrfToken::new_random)
         .set_pkce_challenge(pkce_challenge)
         .url();
 
-    auth_url
-        .query_pairs_mut()
-        .append_pair("user", &ALICE_ID.to_string());
-
     let req = reqwest::get(auth_url.to_string()).await.unwrap();
+    let status = req.status();
+    let body = req.text().await.unwrap();
+    assert_eq!(status, reqwest::StatusCode::OK, "{body}");
+
+    let login_url = get_login_url(&body).unwrap();
+    let login_url = format!("http://localhost:{port}{login_url}");
+    let req = reqwest::get(login_url).await.unwrap();
     let status = req.status();
     let body = req.text().await.unwrap();
     assert_eq!(status, reqwest::StatusCode::OK, "{body}");

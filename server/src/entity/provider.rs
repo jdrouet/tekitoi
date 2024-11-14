@@ -13,6 +13,20 @@ pub(crate) enum ProviderKind {
     UserList,
 }
 
+impl ProviderKind {
+    pub const fn as_code(&self) -> u8 {
+        USER_LIST_CODE
+    }
+}
+
+impl std::fmt::Display for ProviderKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::UserList => f.write_str(USER_LIST_NAME),
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub(crate) struct ProviderKindParserError(pub String);
 
@@ -57,16 +71,10 @@ impl TryFrom<u8> for ProviderKind {
     }
 }
 
-impl ProviderKind {
-    pub const fn as_code(&self) -> u8 {
-        USER_LIST_CODE
-    }
-}
-
 #[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
 pub(crate) struct Entity {
-    application_id: Uuid,
-    kind: ProviderKind,
+    pub application_id: Uuid,
+    pub kind: ProviderKind,
 }
 
 impl<'r> sqlx::FromRow<'r, sqlx::sqlite::SqliteRow> for Entity {
@@ -114,5 +122,25 @@ impl Upsert {
         .bind(self.kind.as_code())
         .fetch_one(executor)
         .await
+    }
+}
+
+pub(crate) struct ListByApplication {
+    application_id: Uuid,
+}
+
+impl ListByApplication {
+    pub fn new(application_id: Uuid) -> Self {
+        Self { application_id }
+    }
+
+    pub async fn execute<'c, E: sqlx::Executor<'c, Database = sqlx::Sqlite>>(
+        &self,
+        executor: E,
+    ) -> Result<Vec<Entity>, sqlx::Error> {
+        sqlx::query_as("select application_id, kind from providers where application_id = $1")
+            .bind(self.application_id)
+            .fetch_all(executor)
+            .await
     }
 }

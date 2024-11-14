@@ -6,6 +6,7 @@ use axum::{http::StatusCode, response::IntoResponse, Json};
 pub(super) struct Error {
     #[serde(skip)]
     status: StatusCode,
+    #[serde(rename = "error")]
     message: Cow<'static, str>,
 }
 

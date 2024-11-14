@@ -1,3 +1,4 @@
+use crate::entity::provider::ProviderKind;
 use crate::entity::user::Entity as UserEntity;
 
 #[derive(Debug, serde::Deserialize)]
@@ -11,17 +12,20 @@ impl Config {
         mut tx: sqlx::Transaction<'c, sqlx::Sqlite>,
         app: &crate::entity::application::Entity,
     ) -> anyhow::Result<sqlx::Transaction<'c, sqlx::Sqlite>> {
-        crate::entity::provider::Upsert::new(
-            app.id,
-            crate::entity::provider::ProviderKind::UserList,
-        )
-        .execute(&mut *tx)
-        .await?;
+        crate::entity::provider::Upsert::new(app.id, ProviderKind::UserList)
+            .execute(&mut *tx)
+            .await?;
 
         for user in self.users.iter() {
-            crate::entity::user::Upsert::new(user.id, app.id, &user.login, &user.email)
-                .execute(&mut *tx)
-                .await?;
+            crate::entity::user::Upsert::new(
+                user.id,
+                app.id,
+                ProviderKind::UserList,
+                &user.login,
+                &user.email,
+            )
+            .execute(&mut *tx)
+            .await?;
         }
         Ok(tx)
     }
