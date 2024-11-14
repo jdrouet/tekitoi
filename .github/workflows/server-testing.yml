@@ -1,0 +1,63 @@
+name: server testing
+
+defaults:
+  run:
+    working-directory: server
+
+on:
+  merge_group:
+    types: [checks_requested]
+  workflow_call:
+  pull_request:
+    paths:
+      - ".github/workflows/server-testing.yml"
+      - "Cargo.lock"
+      - "Cargo.toml"
+      - "server/**"
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/server-testing.yml"
+      - "Cargo.lock"
+      - "Cargo.toml"
+      - "server/**"
+
+env:
+  RUSTFLAGS: "-Dwarnings"
+
+jobs:
+  testing:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: install cargo toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          profile: minimal
+
+      - name: prepare cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-testing-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: install cargo-llvm-cov
+        uses: taiki-e/install-action@cargo-llvm-cov
+
+      - name: run tests
+        run: cargo llvm-cov --all-features --lcov --output-path lcov.info
+
+      - name: upload coverage
+        uses: codecov/codecov-action@v4
+        with:
+          files: lcov.info
+          fail_ci_if_error: false
