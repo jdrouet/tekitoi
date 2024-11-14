@@ -2,27 +2,27 @@ use std::str::FromStr;
 
 use uuid::Uuid;
 
-pub(crate) const USER_LIST_NAME: &str = "user-list";
-pub(crate) const USER_LIST_CODE: u8 = 0;
+pub(crate) const PROFILES_NAME: &str = "profiles";
+pub(crate) const PROFILES_CODE: u8 = 0;
 
 #[derive(
     Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize, serde::Deserialize,
 )]
 #[serde(rename_all = "kebab-case")]
 pub(crate) enum ProviderKind {
-    UserList,
+    Profiles,
 }
 
 impl ProviderKind {
     pub const fn as_code(&self) -> u8 {
-        USER_LIST_CODE
+        PROFILES_CODE
     }
 }
 
 impl std::fmt::Display for ProviderKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::UserList => f.write_str(USER_LIST_NAME),
+            Self::Profiles => f.write_str(PROFILES_NAME),
         }
     }
 }
@@ -43,7 +43,7 @@ impl FromStr for ProviderKind {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
-            USER_LIST_NAME => Ok(Self::UserList),
+            PROFILES_NAME => Ok(Self::Profiles),
             other => Err(ProviderKindParserError(other.to_string())),
         }
     }
@@ -65,7 +65,7 @@ impl TryFrom<u8> for ProviderKind {
 
     fn try_from(value: u8) -> Result<Self, Self::Error> {
         match value {
-            USER_LIST_CODE => Ok(Self::UserList),
+            PROFILES_CODE => Ok(Self::Profiles),
             other => Err(ProviderKindDecoderError(other)),
         }
     }

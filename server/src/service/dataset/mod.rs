@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use anyhow::Context;
 use uuid::Uuid;
 
-mod userlist;
+mod profiles;
 
 #[cfg(test)]
 pub(crate) const CLIENT_ID: Uuid = Uuid::from_u128(0x00010000000000000000000000000000u128);
@@ -91,7 +91,7 @@ impl RootConfig {
                 client_id: CLIENT_ID,
                 redirect_uri: REDIRECT_URI.into(),
                 client_secrets: HashSet::from_iter([CLIENT_SECRET.into()]),
-                providers: vec![Provider::UserList(userlist::Config::test())],
+                providers: vec![Provider::Profiles(profiles::Config::test())],
             }],
         }
     }
@@ -108,7 +108,7 @@ struct ApplicationConfig {
 #[derive(serde::Deserialize)]
 #[serde(tag = "type", rename_all = "kebab-case")]
 enum Provider {
-    UserList(userlist::Config),
+    Profiles(profiles::Config),
 }
 
 impl Provider {
@@ -118,7 +118,7 @@ impl Provider {
         app: &crate::entity::application::Entity,
     ) -> anyhow::Result<sqlx::Transaction<'c, sqlx::Sqlite>> {
         match self {
-            Self::UserList(inner) => inner.synchronize(tx, app).await,
+            Self::Profiles(inner) => inner.synchronize(tx, app).await,
         }
     }
 }

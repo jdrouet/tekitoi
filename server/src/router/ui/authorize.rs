@@ -63,14 +63,14 @@ impl UserListSection {
     fn new(params: &QueryParams, users: Vec<UserEntity>) -> anyhow::Result<Self> {
         let mut users_generated = Vec::new();
         for user in users {
-            let target_params = super::login::userlist::QueryParams {
+            let target_params = super::login::profiles::QueryParams {
                 parent: Cow::Borrowed(params),
                 user: user.id,
             };
             let target_params = serde_urlencoded::to_string(&target_params)?;
             let link = format!(
                 "/authorize/{}/login?{target_params}",
-                ProviderKind::UserList
+                ProviderKind::Profiles
             );
             users_generated.push((user.login, link));
         }
@@ -82,7 +82,7 @@ impl UserListSection {
     fn render<'b>(&self, buf: Buffer<String, Body<'b>>) -> Buffer<String, Body<'b>> {
         buf.node("div")
             .attr(("class", "list"))
-            .attr(("attr-provider", "user-list"))
+            .attr(("attr-provider", "profiles"))
             .content(|buf| {
                 self.users.iter().fold(buf, |buf, (login, link)| {
                     buf.node("a")
@@ -161,9 +161,9 @@ pub(super) async fn handle(
         .await?;
     let providers: HashSet<_> = providers.into_iter().map(|p| p.kind).collect();
 
-    if providers.contains(&ProviderKind::UserList) {
+    if providers.contains(&ProviderKind::Profiles) {
         let users =
-            crate::entity::user::ListForApplicationAndProvider::new(app.id, ProviderKind::UserList)
+            crate::entity::user::ListForApplicationAndProvider::new(app.id, ProviderKind::Profiles)
                 .execute(&mut *tx)
                 .await?;
         success.user_list = Some(UserListSection::new(&params, users).map_err(|err| {
@@ -185,8 +185,8 @@ mod tests {
     #[test]
     fn should_render_success_page_without_user_list() {
         let page = ResponseSuccess::default().render();
-        assert!(!page.contains("attr-provider=\"user-list\""));
-        assert!(!page.contains("href=\"/authorize/user-list/"));
+        assert!(!page.contains("attr-provider=\"profiles\""));
+        assert!(!page.contains("href=\"/authorize/profiles/"));
     }
 
     #[test]
@@ -209,7 +209,7 @@ mod tests {
             user_list: Some(UserListSection::new(&params, users).unwrap()),
         };
         let page = page.render();
-        assert!(page.contains("attr-provider=\"user-list\""));
-        assert!(page.contains("href=\"/authorize/user-list/"))
+        assert!(page.contains("attr-provider=\"profiles\""));
+        assert!(page.contains("href=\"/authorize/profiles/"))
     }
 }

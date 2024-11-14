@@ -12,7 +12,7 @@ impl Config {
         mut tx: sqlx::Transaction<'c, sqlx::Sqlite>,
         app: &crate::entity::application::Entity,
     ) -> anyhow::Result<sqlx::Transaction<'c, sqlx::Sqlite>> {
-        crate::entity::provider::Upsert::new(app.id, ProviderKind::UserList)
+        crate::entity::provider::Upsert::new(app.id, ProviderKind::Profiles)
             .execute(&mut *tx)
             .await?;
 
@@ -20,7 +20,7 @@ impl Config {
             crate::entity::user::Upsert::new(
                 user.id,
                 app.id,
-                ProviderKind::UserList,
+                ProviderKind::Profiles,
                 &user.login,
                 &user.email,
             )

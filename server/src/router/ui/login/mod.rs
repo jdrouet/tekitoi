@@ -1,1 +1,1 @@
-pub(crate) mod userlist;
+pub(crate) mod profiles;

@@ -8,7 +8,7 @@ use reqwest::Url;
 use crate::service::dataset::{CLIENT_ID, CLIENT_SECRET, REDIRECT_URI};
 
 fn get_login_url(page: &str) -> Option<&str> {
-    let index = page.find("/authorize/user-list/login")?;
+    let index = page.find("/authorize/profiles/login")?;
     let len = page[index..].find("\"")?;
     Some(&page[index..(index + len)])
 }

@@ -72,7 +72,7 @@ pub(crate) async fn handle(
         return Err(ResponseError::InvalidRedirectUri);
     }
     let user =
-        crate::entity::user::FindByIdAndProvider::new(params.user, app.id, ProviderKind::UserList)
+        crate::entity::user::FindByIdAndProvider::new(params.user, app.id, ProviderKind::Profiles)
             .execute(&mut *tx)
             .await?;
     let user = user.ok_or(ResponseError::UserNotFound)?;
