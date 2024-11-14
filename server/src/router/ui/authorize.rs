@@ -121,14 +121,17 @@ impl UserListSection {
     }
 
     fn render<'b>(&self, buf: Buffer<String, Body<'b>>) -> Buffer<String, Body<'b>> {
-        buf.node("div").attr(("class", "list")).content(|buf| {
-            self.users.iter().fold(buf, |buf, (login, link)| {
-                buf.node("a")
-                    .attr(("class", "list-item"))
-                    .attr(("href", link.as_str()))
-                    .content(|buf| buf.text("Login as ").text(login.as_str()))
+        buf.node("div")
+            .attr(("class", "list"))
+            .attr(("attr-provider", "user-list"))
+            .content(|buf| {
+                self.users.iter().fold(buf, |buf, (login, link)| {
+                    buf.node("a")
+                        .attr(("class", "list-item"))
+                        .attr(("href", link.as_str()))
+                        .content(|buf| buf.text("Login as ").text(login.as_str()))
+                })
             })
-        })
     }
 }
 
@@ -216,4 +219,37 @@ pub(super) async fn handle(
 }
 
 #[cfg(test)]
-mod tests {}
+mod tests {
+    use super::*;
+    use crate::service::dataset::ALICE_ID;
+
+    #[test]
+    fn should_render_success_page_without_user_list() {
+        let page = ResponseSuccess::default().render();
+        assert!(page.find("attr-provider=\"user-list\"").is_none());
+        assert!(page.find("href=\"/authorize/user-list/").is_none());
+    }
+
+    #[test]
+    fn should_render_success_page_with_user_list() {
+        let params = QueryParams {
+            client_id: Uuid::new_v4(),
+            redirect_uri: "".into(),
+            state: "".into(),
+            code_challenge: "".into(),
+            code_challenge_method: CodeChallengeMethod::S256,
+            response_type: ResponseType::Code,
+            scope: None,
+        };
+        let users = vec![UserEntity {
+            id: ALICE_ID,
+            login: "alice".into(),
+            email: "alice@example.com".into(),
+        }];
+        let mut page = ResponseSuccess::default();
+        page.user_list = Some(UserListSection::new(&params, users).unwrap());
+        let page = page.render();
+        assert!(page.find("attr-provider=\"user-list\"").is_some());
+        assert!(page.find("href=\"/authorize/user-list/").is_some())
+    }
+}
