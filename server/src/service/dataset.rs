@@ -99,12 +99,12 @@ impl RootConfig {
                     UserEntity {
                         id: ALICE_ID,
                         login: "alice".into(),
-                        email: "alice@gmail.com".into(),
+                        email: "alice@example.com".into(),
                     },
                     UserEntity {
                         id: BOB_ID,
                         login: "bob".into(),
-                        email: "bob@gmail.com".into(),
+                        email: "bob@example.com".into(),
                     },
                 ],
             }],
