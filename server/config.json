@@ -19,6 +19,9 @@
               "email": "bob@example.com"
             }
           ]
+        },
+        {
+          "type": "credentials"
         }
       ]
     }

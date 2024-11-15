@@ -4,13 +4,14 @@ use axum::extract::Query;
 use axum::http::StatusCode;
 use axum::response::{Html, IntoResponse};
 use axum::Extension;
+use tekitoi_ui::view::View;
 use uuid::Uuid;
 
 use crate::entity::provider::ProviderKind;
 use crate::helper::generate_token;
 use crate::router::ui::authorize::AUTHORIZATION_TTL;
 use crate::router::ui::error::Error;
-use crate::router::ui::helper::{encode_url, redirection};
+use crate::router::ui::helper::encode_url;
 
 pub(crate) enum ResponseError {
     ApplicationNotFound,
@@ -100,5 +101,6 @@ pub(crate) async fn handle(
         ]
         .into_iter(),
     );
-    Ok(Html(redirection(redirection_url)))
+    let redirection = tekitoi_ui::view::redirect::View::new(redirection_url).render();
+    Ok(Html(redirection))
 }

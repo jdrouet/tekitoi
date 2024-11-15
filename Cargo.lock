@@ -2239,7 +2239,6 @@ dependencies = [
 name = "tekitoi-server"
 version = "0.1.0"
 dependencies = [
- "another-html-builder",
  "anyhow",
  "axum",
  "axum-extra",
@@ -2254,12 +2253,20 @@ dependencies = [
  "serde_urlencoded",
  "sha2",
  "sqlx",
+ "tekitoi-ui",
  "tokio",
  "tower",
  "tower-http",
  "tracing",
  "tracing-subscriber",
  "uuid",
+]
+
+[[package]]
+name = "tekitoi-ui"
+version = "0.1.0"
+dependencies = [
+ "another-html-builder",
 ]
 
 [[package]]

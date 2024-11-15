@@ -2,11 +2,11 @@ use std::borrow::Cow;
 use std::collections::HashSet;
 use std::time::Duration;
 
-use another_html_builder::{Body, Buffer};
 use axum::extract::Query;
 use axum::http::StatusCode;
 use axum::response::{Html, IntoResponse};
 use axum::Extension;
+use tekitoi_ui::view::View;
 use uuid::Uuid;
 
 use crate::entity::code_challenge::CodeChallengeMethod;
@@ -55,78 +55,34 @@ impl IntoResponse for ResponseError {
     }
 }
 
-pub(crate) struct UserListSection {
-    users: Vec<(String, String)>,
+fn credentials_section(
+    params: &QueryParams,
+) -> anyhow::Result<tekitoi_ui::view::authorize::credentials::Section> {
+    let params = serde_urlencoded::to_string(params)?;
+    let target = format!("/authorize/{}/login?{params}", ProviderKind::Credentials);
+    Ok(tekitoi_ui::view::authorize::credentials::Section::new(
+        target,
+    ))
 }
 
-impl UserListSection {
-    fn new(params: &QueryParams, users: Vec<UserEntity>) -> anyhow::Result<Self> {
-        let mut users_generated = Vec::new();
-        for user in users {
-            let target_params = super::login::profiles::QueryParams {
-                parent: Cow::Borrowed(params),
-                user: user.id,
-            };
-            let target_params = serde_urlencoded::to_string(&target_params)?;
-            let link = format!(
-                "/authorize/{}/login?{target_params}",
-                ProviderKind::Profiles
-            );
-            users_generated.push((user.login, link));
-        }
-        Ok(Self {
-            users: users_generated,
-        })
+fn profiles_section(
+    params: &QueryParams,
+    users: Vec<UserEntity>,
+) -> anyhow::Result<tekitoi_ui::view::authorize::profiles::Section> {
+    let mut res = tekitoi_ui::view::authorize::profiles::Section::default();
+    for user in users {
+        let target_params = super::login::profiles::QueryParams {
+            parent: Cow::Borrowed(params),
+            user: user.id,
+        };
+        let target_params = serde_urlencoded::to_string(&target_params)?;
+        let link = format!(
+            "/authorize/{}/login?{target_params}",
+            ProviderKind::Profiles
+        );
+        res.add_user(user.login, link);
     }
-
-    fn render<'b>(&self, buf: Buffer<String, Body<'b>>) -> Buffer<String, Body<'b>> {
-        buf.node("div")
-            .attr(("class", "list"))
-            .attr(("attr-provider", "profiles"))
-            .content(|buf| {
-                self.users.iter().fold(buf, |buf, (login, link)| {
-                    buf.node("a")
-                        .attr(("class", "list-item"))
-                        .attr(("href", link.as_str()))
-                        .content(|buf| buf.text("Login as ").text(login.as_str()))
-                })
-            })
-    }
-}
-
-#[derive(Default)]
-pub(crate) struct ResponseSuccess {
-    pub user_list: Option<UserListSection>,
-}
-
-impl ResponseSuccess {
-    fn render_body<'b>(&self, buf: Buffer<String, Body<'b>>) -> Buffer<String, Body<'b>> {
-        buf.node("body").content(|buf| {
-            buf.node("main")
-                .attr(("class", "card shadow"))
-                .content(|buf| {
-                    let buf = buf
-                        .node("div")
-                        .attr(("class", "card-header text-center"))
-                        .content(|buf| buf.text("Authentication"));
-                    self.user_list
-                        .iter()
-                        .fold(buf, |buf, section| section.render(buf))
-                })
-        })
-    }
-
-    fn render(&self) -> String {
-        another_html_builder::Buffer::default()
-            .doctype()
-            .node("html")
-            .attr(("lang", "en"))
-            .content(|buf| {
-                let buf = super::helper::render_head(buf);
-                self.render_body(buf)
-            })
-            .into_inner()
-    }
+    Ok(res)
 }
 
 #[derive(Clone, serde::Deserialize, serde::Serialize)]
@@ -155,7 +111,7 @@ pub(super) async fn handle(
         return Err(ResponseError::InvalidRedirectUri);
     }
 
-    let mut success = ResponseSuccess::default();
+    let mut success = tekitoi_ui::view::authorize::View::default();
     let providers = crate::entity::provider::ListByApplication::new(app.id)
         .execute(&mut *tx)
         .await?;
@@ -166,50 +122,22 @@ pub(super) async fn handle(
             crate::entity::user::ListForApplicationAndProvider::new(app.id, ProviderKind::Profiles)
                 .execute(&mut *tx)
                 .await?;
-        success.user_list = Some(UserListSection::new(&params, users).map_err(|err| {
-            tracing::error!(message = "unable to generate user list section", source = %err);
+        let section = profiles_section(&params, users).map_err(|err| {
+            tracing::error!(message = "unable to generate profiles section", source = %err);
             ResponseError::UnableToBuildPage
-        })?);
+        })?;
+        success.set_profiles(section);
+    }
+
+    if providers.contains(&ProviderKind::Credentials) {
+        let section = credentials_section(&params).map_err(|err| {
+            tracing::error!(message = "unable to generate credentials section", source = %err);
+            ResponseError::UnableToBuildPage
+        })?;
+        success.set_credentials(section);
     }
 
     tx.commit().await?;
 
     Ok(Html(success.render()))
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::service::dataset::ALICE_ID;
-
-    #[test]
-    fn should_render_success_page_without_user_list() {
-        let page = ResponseSuccess::default().render();
-        assert!(!page.contains("attr-provider=\"profiles\""));
-        assert!(!page.contains("href=\"/authorize/profiles/"));
-    }
-
-    #[test]
-    fn should_render_success_page_with_user_list() {
-        let params = QueryParams {
-            client_id: Uuid::new_v4(),
-            redirect_uri: "".into(),
-            state: "".into(),
-            code_challenge: "".into(),
-            code_challenge_method: CodeChallengeMethod::S256,
-            response_type: ResponseType::Code,
-            scope: None,
-        };
-        let users = vec![UserEntity {
-            id: ALICE_ID,
-            login: "alice".into(),
-            email: "alice@example.com".into(),
-        }];
-        let page = ResponseSuccess {
-            user_list: Some(UserListSection::new(&params, users).unwrap()),
-        };
-        let page = page.render();
-        assert!(page.contains("attr-provider=\"profiles\""));
-        assert!(page.contains("href=\"/authorize/profiles/"))
-    }
 }

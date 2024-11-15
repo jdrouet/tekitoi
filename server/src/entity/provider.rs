@@ -4,24 +4,31 @@ use uuid::Uuid;
 
 pub(crate) const PROFILES_NAME: &str = "profiles";
 pub(crate) const PROFILES_CODE: u8 = 0;
+pub(crate) const CREDENTIALS_NAME: &str = "credentials";
+pub(crate) const CREDENTIALS_CODE: u8 = 1;
 
 #[derive(
     Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize, serde::Deserialize,
 )]
 #[serde(rename_all = "kebab-case")]
 pub(crate) enum ProviderKind {
+    Credentials,
     Profiles,
 }
 
 impl ProviderKind {
     pub const fn as_code(&self) -> u8 {
-        PROFILES_CODE
+        match self {
+            Self::Credentials => CREDENTIALS_CODE,
+            Self::Profiles => PROFILES_CODE,
+        }
     }
 }
 
 impl std::fmt::Display for ProviderKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            Self::Credentials => f.write_str(CREDENTIALS_NAME),
             Self::Profiles => f.write_str(PROFILES_NAME),
         }
     }
@@ -43,6 +50,7 @@ impl FromStr for ProviderKind {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
+            CREDENTIALS_NAME => Ok(Self::Credentials),
             PROFILES_NAME => Ok(Self::Profiles),
             other => Err(ProviderKindParserError(other.to_string())),
         }
@@ -65,6 +73,7 @@ impl TryFrom<u8> for ProviderKind {
 
     fn try_from(value: u8) -> Result<Self, Self::Error> {
         match value {
+            CREDENTIALS_CODE => Ok(Self::Credentials),
             PROFILES_CODE => Ok(Self::Profiles),
             other => Err(ProviderKindDecoderError(other)),
         }

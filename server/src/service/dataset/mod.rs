@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 use anyhow::Context;
 use uuid::Uuid;
 
+mod credentials;
 mod profiles;
 
 #[cfg(test)]
@@ -108,6 +109,7 @@ struct ApplicationConfig {
 #[derive(serde::Deserialize)]
 #[serde(tag = "type", rename_all = "kebab-case")]
 enum Provider {
+    Credentials(credentials::Config),
     Profiles(profiles::Config),
 }
 
@@ -118,6 +120,7 @@ impl Provider {
         app: &crate::entity::application::Entity,
     ) -> anyhow::Result<sqlx::Transaction<'c, sqlx::Sqlite>> {
         match self {
+            Self::Credentials(inner) => inner.synchronize(tx, app).await,
             Self::Profiles(inner) => inner.synchronize(tx, app).await,
         }
     }

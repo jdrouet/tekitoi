@@ -1,0 +1,103 @@
+:root {
+    --border-color: #cacaca;
+    --background-deep: #fafafa;
+    --background-default: white;
+    --background-hover: #efefef;
+    --text-color: black;
+    --success-color: #93c5fd;
+    --success-color-hover: #60a5fa;
+}
+html,
+body {
+    background-color: var(--background-deep);
+    font-family: Arial, Helvetica, sans-serif;
+    padding: 0;
+    margin: 0;
+}
+.text-center {
+    text-align: center;
+}
+.card {
+    background-color: var(--background-default);
+    max-width: 400px;
+    margin: 32px auto;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+}
+.card .card-header {
+    border-bottom: 1px solid var(--border-color);
+    font-weight: 600;
+    padding: 8px 8px 4px;
+}
+.card .card-body {
+    padding: 8px;
+}
+.card .separator {
+    margin: 8px 0;
+    border: none;
+    border-top: 1px solid var(--border-color);
+}
+.list {
+    margin: 8px 0;
+}
+.list-item {
+    background-color: var(--background-default);
+    display: block;
+    padding: 8px;
+}
+a.list-item {
+    color: var(--text-color);
+    text-decoration: none;
+}
+a.list-item:hover {
+    background-color: var(--background-hover);
+}
+.shadow {
+    box-shadow:
+        0 1px 3px 0 rgb(0 0 0 / 0.1),
+        0 1px 2px -1px rgb(0 0 0 / 0.1);
+}
+.hover_shadow:hover {
+    box-shadow:
+        0 1px 3px 0 rgb(0 0 0 / 0.1),
+        0 1px 2px -1px rgb(0 0 0 / 0.1);
+}
+.text-input {
+    margin-bottom: 8px;
+}
+.text-input label,
+.text-input input,
+button[type="submit"] {
+    display: block;
+    margin-bottom: 8px;
+    box-sizing: border-box;
+    width: 100%;
+}
+
+.text-input input[type="text"],
+.text-input input[type="email"],
+.text-input input[type="password"] {
+    padding: 4px 8px;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    margin-bottom: 18px;
+}
+
+button {
+    background-color: var(--background-deep);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    cursor: pointer;
+    padding: 4px 8px;
+}
+button:hover {
+    background-color: var(--border-color);
+}
+
+button.success {
+    background-color: var(--success-color);
+    border: 1px solid var(--success-color-hover);
+}
+button.success:hover {
+    background-color: var(--success-color-hover);
+}
