@@ -1,9 +1,17 @@
+use uuid::Uuid;
+
 use crate::entity::provider::ProviderKind;
-use crate::entity::user::Entity as UserEntity;
+
+#[derive(Debug, serde::Deserialize)]
+pub(crate) struct User {
+    id: Uuid,
+    login: String,
+    email: String,
+}
 
 #[derive(Debug, serde::Deserialize)]
 pub(crate) struct Config {
-    users: Vec<UserEntity>,
+    users: Vec<User>,
 }
 
 impl Config {
@@ -23,6 +31,7 @@ impl Config {
                 ProviderKind::Profiles,
                 &user.login,
                 &user.email,
+                None,
             )
             .execute(&mut *tx)
             .await?;
@@ -36,12 +45,12 @@ impl Config {
     pub(crate) fn test() -> Self {
         Self {
             users: vec![
-                UserEntity {
+                User {
                     id: super::ALICE_ID,
                     login: "alice".into(),
                     email: "alice@example.com".into(),
                 },
-                UserEntity {
+                User {
                     id: super::BOB_ID,
                     login: "bob".into(),
                     email: "bob@example.com".into(),

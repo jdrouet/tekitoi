@@ -4,5 +4,6 @@ create table users (
         references applications(id) on delete cascade,
     provider_kind tinyint not null,
     login text not null,
-    email text not null
+    email text not null,
+    password text
 );

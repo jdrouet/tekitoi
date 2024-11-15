@@ -2,8 +2,10 @@
     --border-color: #cacaca;
     --background-deep: #fafafa;
     --background-default: white;
+    --background-error: #fecaca;
     --background-hover: #efefef;
     --text-color: black;
+    --error-color: #dc2626;
     --success-color: #93c5fd;
     --success-color-hover: #60a5fa;
 }
@@ -17,18 +19,32 @@ body {
 .text-center {
     text-align: center;
 }
+.max-w400 {
+    max-width: 400px;
+}
+.mx-auto {
+    margin-left: auto;
+    margin-right: auto;
+}
+.my-32 {
+    margin-top: 32px;
+    margin-bottom: 32px;
+}
 .card {
     background-color: var(--background-default);
-    max-width: 400px;
-    margin: 32px auto;
     border: 1px solid var(--border-color);
     border-radius: 4px;
+}
+.card-error {
+    background-color: var(--background-error);
+    border-color: var(--error-color);
+    color: var(--error-color);
 }
 .card .card-header {
     border-bottom: 1px solid var(--border-color);
     font-weight: 600;
-    padding: 8px 8px 4px;
 }
+.card .card-header,
 .card .card-body {
     padding: 8px;
 }

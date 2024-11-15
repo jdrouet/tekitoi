@@ -32,7 +32,7 @@ impl super::View for View {
                 let buf = crate::component::head::render(buf, self.style_path);
                 buf.node("body").content(|buf| {
                     buf.node("div")
-                        .attr(("class", "card shadow"))
+                        .attr(("class", "card shadow max-w400 mx-auto my-32"))
                         .content(|buf| {
                             buf.node("div")
                                 .attr(("class", "card-header text-center"))

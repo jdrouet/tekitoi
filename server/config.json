@@ -21,7 +21,21 @@
           ]
         },
         {
-          "type": "credentials"
+          "type": "credentials",
+          "users": [
+            {
+              "id": "e795410c-f7ad-4867-94a6-6917c100e30d",
+              "login": "charles",
+              "email": "charles@example.com",
+              "password": "this-is-a-password"
+            },
+            {
+              "id": "e795410c-f7ad-4867-94a6-6917c100e31d",
+              "login": "david",
+              "email": "david@example.com",
+              "password": "this-is-another-password"
+            }
+          ]
         }
       ]
     }

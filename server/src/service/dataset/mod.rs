@@ -17,6 +17,10 @@ pub(crate) const REDIRECT_URI: &str = "http://service/redirect";
 pub(crate) const ALICE_ID: Uuid = Uuid::from_u128(0x00000000000000000000000000000000u128);
 #[cfg(test)]
 pub(crate) const BOB_ID: Uuid = Uuid::from_u128(0x00000000000000000000000000000001u128);
+#[cfg(test)]
+pub(crate) const CHARLES_ID: Uuid = Uuid::from_u128(0x00000000000000000000000000000002u128);
+#[cfg(test)]
+pub(crate) const DAVID_ID: Uuid = Uuid::from_u128(0x00000000000000000000000000000003u128);
 
 pub(crate) struct Config {
     path: Option<PathBuf>,
@@ -92,7 +96,10 @@ impl RootConfig {
                 client_id: CLIENT_ID,
                 redirect_uri: REDIRECT_URI.into(),
                 client_secrets: HashSet::from_iter([CLIENT_SECRET.into()]),
-                providers: vec![Provider::Profiles(profiles::Config::test())],
+                providers: vec![
+                    Provider::Profiles(profiles::Config::test()),
+                    Provider::Credentials(credentials::Config::test()),
+                ],
             }],
         }
     }

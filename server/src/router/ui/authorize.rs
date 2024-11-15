@@ -72,7 +72,7 @@ fn profiles_section(
     let mut res = tekitoi_ui::view::authorize::profiles::Section::default();
     for user in users {
         let target_params = super::login::profiles::QueryParams {
-            parent: Cow::Borrowed(params),
+            base: Cow::Borrowed(&params.base),
             user: user.id,
         };
         let target_params = serde_urlencoded::to_string(&target_params)?;
@@ -87,7 +87,7 @@ fn profiles_section(
 
 #[derive(Clone, serde::Deserialize, serde::Serialize)]
 #[cfg_attr(test, derive(Debug))]
-pub(crate) struct QueryParams {
+pub(crate) struct BaseQueryParams {
     pub client_id: Uuid,
     pub redirect_uri: String,
     pub state: String,
@@ -98,16 +98,24 @@ pub(crate) struct QueryParams {
     pub scope: Option<String>,
 }
 
+#[derive(Clone, serde::Deserialize, serde::Serialize)]
+#[cfg_attr(test, derive(Debug))]
+pub(crate) struct QueryParams {
+    #[serde(flatten)]
+    pub base: BaseQueryParams,
+    pub error: Option<String>,
+}
+
 pub(super) async fn handle(
     Extension(database): Extension<crate::service::database::Pool>,
     Query(params): Query<QueryParams>,
 ) -> Result<Html<String>, ResponseError> {
     let mut tx = database.as_ref().begin().await?;
-    let app = crate::entity::application::FindById::new(params.client_id)
+    let app = crate::entity::application::FindById::new(params.base.client_id)
         .execute(&mut *tx)
         .await?;
     let app = app.ok_or(ResponseError::ApplicationNotFound)?;
-    if !app.redirect_uri.eq(params.redirect_uri.as_str()) {
+    if !app.redirect_uri.eq(params.base.redirect_uri.as_str()) {
         return Err(ResponseError::InvalidRedirectUri);
     }
 
@@ -135,6 +143,10 @@ pub(super) async fn handle(
             ResponseError::UnableToBuildPage
         })?;
         success.set_credentials(section);
+    }
+
+    if let Some(error) = params.error {
+        success.set_error(error);
     }
 
     tx.commit().await?;

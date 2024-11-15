@@ -56,7 +56,7 @@ impl IntoResponse for ResponseError {
 #[cfg_attr(test, derive(Debug))]
 pub(crate) struct QueryParams<'a> {
     #[serde(flatten)]
-    pub parent: Cow<'a, crate::router::ui::authorize::QueryParams>,
+    pub base: Cow<'a, crate::router::ui::authorize::BaseQueryParams>,
     pub user: Uuid,
 }
 
@@ -65,11 +65,11 @@ pub(crate) async fn handle(
     Query(params): Query<QueryParams<'static>>,
 ) -> Result<Html<String>, ResponseError> {
     let mut tx = database.as_ref().begin().await?;
-    let app = crate::entity::application::FindById::new(params.parent.client_id)
+    let app = crate::entity::application::FindById::new(params.base.client_id)
         .execute(&mut *tx)
         .await?;
     let app = app.ok_or(ResponseError::ApplicationNotFound)?;
-    if !app.redirect_uri.eq(params.parent.redirect_uri.as_str()) {
+    if !app.redirect_uri.eq(params.base.redirect_uri.as_str()) {
         return Err(ResponseError::InvalidRedirectUri);
     }
     let user =
@@ -81,12 +81,12 @@ pub(crate) async fn handle(
     let code = generate_token(24);
     let request = crate::entity::authorization::Create {
         code: code.as_str(),
-        state: params.parent.state.as_str(),
-        scope: params.parent.scope.as_deref(),
-        code_challenge: params.parent.code_challenge.as_str(),
-        code_challenge_method: params.parent.code_challenge_method, // S256
-        response_type: params.parent.response_type,                 // code
-        client_id: params.parent.client_id,
+        state: params.base.state.as_str(),
+        scope: params.base.scope.as_deref(),
+        code_challenge: params.base.code_challenge.as_str(),
+        code_challenge_method: params.base.code_challenge_method, // S256
+        response_type: params.base.response_type,                 // code
+        client_id: params.base.client_id,
         user_id: user.id,
         time_to_live: AUTHORIZATION_TTL,
     };
@@ -94,10 +94,10 @@ pub(crate) async fn handle(
     tx.commit().await?;
 
     let redirection_url = encode_url(
-        &params.parent.redirect_uri,
+        &params.base.redirect_uri,
         [
             ("code", code.as_str()),
-            ("state", params.parent.state.as_str()),
+            ("state", params.base.state.as_str()),
         ]
         .into_iter(),
     );
