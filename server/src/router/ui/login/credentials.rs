@@ -1,7 +1,7 @@
 use axum::extract::Query;
 use axum::http::StatusCode;
 use axum::response::{Html, IntoResponse, Redirect};
-use axum::{Extension, Form, Json};
+use axum::{Extension, Form};
 use tekitoi_ui::view::View;
 
 use crate::entity::user::FindForCredentials;
